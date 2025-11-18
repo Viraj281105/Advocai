@@ -1,0 +1,11 @@
+# --- Core AI and Agent Framework ---
+google-genai
+pydantic          # For structured agent output
+python-dotenv     # For loading API keys
+
+# --- UI Framework (Streamlit) ---
+streamlit
+
+# --- Tooling and Data Processing ---
+requests          # For making external API calls (e.g., PubMed)
+pypdf             # For the Auditor Agent to read PDF denial letters
