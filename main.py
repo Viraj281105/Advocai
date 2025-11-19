@@ -5,81 +5,83 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
-# Import the custom tools we just created
-from tools.pubmed_search import pubmed_search
-from tools.document_reader import extract_text_from_document
+# Import the Auditor Agent and its required Pydantic model
+from agents.auditor import run_auditor_agent, StructuredDenial
 
 # --- CONFIGURATION ---
-MODEL_NAME = "gemini-2.5-pro" # Use Pro for complex reasoning and tool-use
+MODEL_NAME = "gemini-2.5-pro" # Using Pro for complex reasoning and structured output
 
 def initialize_gemini_client():
     """Initializes the Gemini client and ensures environment is set up."""
-    # The client automatically picks up GEMINI_API_KEY from environment variables
-    # (loaded by python-dotenv)
+    load_dotenv()
     try:
+        # The client automatically picks up GEMINI_API_KEY from environment variables
         client = genai.Client()
         return client
     except Exception as e:
         print(f"FATAL: Failed to initialize Gemini Client. Check GEMINI_API_KEY. Error: {e}")
         return None
 
-def orchestrate_advocai_workflow(pdf_path: str):
+def orchestrate_advocai_workflow(denial_path: str, policy_path: str):
     """
-    Runs the full sequential Advocai workflow:
-    Auditor -> Clinician -> Barrister
+    Runs the full sequential Advocai workflow: Auditor -> Clinician -> Barrister.
     """
     print("--- Advocai Workflow Initiated ---")
-    load_dotenv()
     client = initialize_gemini_client()
     
     if not client:
         return
 
-    # 1. DEFINE TOOLS: Register the Python functions as tools for the model
-    available_tools = [pubmed_search, extract_text_from_document]
-
-    # 2. START THE AUDITOR AGENT (First Step)
-    initial_prompt = f"""
-    You are the Auditor Agent. Your task is to analyze the following two documents
-    (a Denial Letter and a Policy Document) using the 'extract_text_from_document' tool
-    and clearly identify two items: the exact Denial Code (e.g., 'C125') and the specific
-    Policy Clause (by full text) the insurer is citing.
-
-    Denial Letter Path: {pdf_path}
-    Policy Document Path: data/input/sample_policy.pdf 
-    """
+    # 1. START THE AUDITOR AGENT (First Step)
+    print("\n[STEP 1: Auditor Agent] Starting document parsing and structuring...")
     
-    print("STATUS: Auditor Agent is analyzing documents...")
+    # Run the Auditor Agent and receive the Pydantic object
+    structured_denial_output: StructuredDenial = run_auditor_agent(
+        client=client,
+        denial_path=denial_path,
+        policy_path=policy_path
+    )
+
+    if not structured_denial_output:
+        print("--- Workflow Halted --- Auditor Agent failed to produce structured data.")
+        return
+
+    # Display the structured memory object
+    print("\n--- Auditor Agent SUCCESS: Structured Output (Memory) ---")
+    print(structured_denial_output.model_dump_json(indent=2))
+    print(f"Denial Code Extracted: {structured_denial_output.denial_code}")
+
+    # -----------------------------------------------------------
+    # 2. PLACEHOLDER: START THE CLINICIAN AGENT (Second Step)
+    # -----------------------------------------------------------
+    print("\n[STEP 2: Clinician Agent] Starting medical evidence search...")
     
-    # Example: Run the generation with the tools enabled
-    try:
-        response = client.models.generate_content(
-            model=MODEL_NAME,
-            contents=[initial_prompt],
-            config=types.GenerateContentConfig(
-                tools=available_tools
-            )
-        )
-        print("\n--- AUDITOR AGENT OUTPUT ---")
-        print(response.text)
-        
-        # NOTE: The next step would pass this output to the Clinician Agent
-        
-    except Exception as e:
-        print(f"An error occurred during content generation: {e}")
+    # The output from STEP 1 becomes the input for STEP 2
+    # clinical_evidence = run_clinician_agent(client=client, denial_details=structured_denial_output)
+    
+    # if not clinical_evidence:
+    #     print("--- Workflow Halted --- Clinician Agent failed to find evidence.")
+    #     return
+    
+    # -----------------------------------------------------------
+    # 3. PLACEHOLDER: START THE BARRISTER AGENT (Third Step)
+    # -----------------------------------------------------------
+    print("\n[STEP 3: Barrister Agent] Starting final appeal drafting...")
+    
+    # final_appeal_text = run_barrister_agent(client=client, all_evidence=clinical_evidence)
+
+    print("\n--- Advocai Workflow Complete ---")
 
 
 if __name__ == "__main__":
-    # Create a placeholder file path for testing purposes
-    TEST_PDF_PATH = "data/input/sample_denial.pdf"
+    # --- File Paths (Ensure these PDFs exist in data/input) ---
+    DENIAL_PATH = "data/input/sample_denial.pdf"
+    POLICY_PATH = "data/input/sample_policy.pdf"
     
-    # Ensure test files exist for a successful run (even if they are empty)
-    if not os.path.exists("data/input"):
-        os.makedirs("data/input")
-    if not os.path.exists(TEST_PDF_PATH):
-        print(f"Creating placeholder file: {TEST_PDF_PATH}. Please place a real PDF here for testing.")
-        with open(TEST_PDF_PATH, 'w') as f: f.write("Placeholder content for testing.")
-    if not os.path.exists("data/input/sample_policy.pdf"):
-        with open("data/input/sample_policy.pdf", 'w') as f: f.write("Placeholder policy.")
-        
-    orchestrate_advocai_workflow(TEST_PDF_PATH)
+    # NOTE: Assuming you have now placed real PDF files in data/input for testing.
+    if not os.path.exists(DENIAL_PATH) or not os.path.exists(POLICY_PATH):
+        print("🚨 CRITICAL ERROR: Please place real PDF files named 'sample_denial.pdf' and 'sample_policy.pdf' in the data/input folder.")
+        print("Workflow cannot proceed without valid input documents.")
+    else:
+        # Pass both paths to the orchestrator
+        orchestrate_advocai_workflow(DENIAL_PATH, POLICY_PATH)
