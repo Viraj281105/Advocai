@@ -5,11 +5,13 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
-# Import the Auditor Agent and its required Pydantic model
+# Import all three agents and their required Pydantic models
 from agents.auditor import run_auditor_agent, StructuredDenial
+from agents.clinician import run_clinician_agent, EvidenceList
+from agents.barrister import run_barrister_agent # Final agent import
 
 # --- CONFIGURATION ---
-MODEL_NAME = "gemini-2.5-pro" # Using Pro for complex reasoning and structured output
+MODEL_NAME = "gemini-2.5-flash" # Use the fast model for rapid development and testing
 
 def initialize_gemini_client():
     """Initializes the Gemini client and ensures environment is set up."""
@@ -46,31 +48,42 @@ def orchestrate_advocai_workflow(denial_path: str, policy_path: str):
         print("--- Workflow Halted --- Auditor Agent failed to produce structured data.")
         return
 
-    # Display the structured memory object
     print("\n--- Auditor Agent SUCCESS: Structured Output (Memory) ---")
     print(structured_denial_output.model_dump_json(indent=2))
-    print(f"Denial Code Extracted: {structured_denial_output.denial_code}")
-
     # -----------------------------------------------------------
-    # 2. PLACEHOLDER: START THE CLINICIAN AGENT (Second Step)
-    # -----------------------------------------------------------
+    
+    # 2. START THE CLINICIAN AGENT (Second Step)
     print("\n[STEP 2: Clinician Agent] Starting medical evidence search...")
-    
-    # The output from STEP 1 becomes the input for STEP 2
-    # clinical_evidence = run_clinician_agent(client=client, denial_details=structured_denial_output)
-    
-    # if not clinical_evidence:
-    #     print("--- Workflow Halted --- Clinician Agent failed to find evidence.")
-    #     return
-    
+
+    clinical_evidence: EvidenceList = run_clinician_agent(client=client, denial_details=structured_denial_output)
+
+    if not clinical_evidence:
+        print("--- Workflow Halted --- Clinician Agent failed to find evidence.")
+        return
+
+    print("\n--- Clinician Agent SUCCESS: Structured Evidence Output ---")
+    print(clinical_evidence.model_dump_json(indent=2))
     # -----------------------------------------------------------
-    # 3. PLACEHOLDER: START THE BARRISTER AGENT (Third Step)
-    # -----------------------------------------------------------
+    
+    # 3. START THE BARRISTER AGENT (Third Step)
     print("\n[STEP 3: Barrister Agent] Starting final appeal drafting...")
     
-    # final_appeal_text = run_barrister_agent(client=client, all_evidence=clinical_evidence)
+    final_appeal_text = run_barrister_agent(
+        client=client, 
+        denial_details=structured_denial_output,
+        clinical_evidence=clinical_evidence
+    )
 
-    print("\n--- Advocai Workflow Complete ---")
+    if not final_appeal_text:
+        print("--- Workflow Halted --- Barrister Agent failed to generate appeal.")
+        return
+        
+    print("\n--- Barrister Agent SUCCESS: FINAL APPEAL LETTER ---")
+    print("\n" + "="*80)
+    print(final_appeal_text)
+    print("="*80)
+
+    print("\n✅ --- Advocai Workflow Complete ---")
 
 
 if __name__ == "__main__":
