@@ -2,103 +2,135 @@ import os
 import requests
 import time
 
-# --- CONFIGURATION: The "Gold Standard" Library ---
-# These are direct links to the official Policy Wording PDFs.
+# ---------------------------------------------------------
+# 1. BASE DIRECTORY FIX (Prevents data/data duplication)
+# ---------------------------------------------------------
+
+# Get absolute project root (folder where this script is located)
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+
+# Define correct data paths
+DATA_DIR = os.path.join(PROJECT_ROOT, "data")
+KNOWLEDGE_DIR = os.path.join(DATA_DIR, "knowledge")
+POLICY_DIR = os.path.join(KNOWLEDGE_DIR, "policies")
+
+# ---------------------------------------------------------
+# 2. POLICY URLS
+# ---------------------------------------------------------
+
 POLICY_URLS = {
-    "Star_Comprehensive_Policy.pdf": "https://irdai.gov.in/documents/37343/931203/SHAHLIP22028V072122_HEALTH2050.pdf/70aade12-d528-1155-a8b7-c03d2cfecd15?version=1.1&t=1668769970678&download=true",
+    "Star_Comprehensive_Policy_2024.pdf": "https://irdai.gov.in/documents/37343/931203/SHAHLIP22028V072122_HEALTH2050.pdf/70aade12-d528-1155-a8b7-c03d2cfecd15?version=1.1&download=true",
+    "HDFC_ERGO_Optima_Restore.pdf": "https://algatesinsurance.in/resources/policy-documents/hdfc-ergo/optima-restore-policy-wordings.pdf",
     "Niva_Bupa_ReAssure_2.0.pdf": "https://transactions.nivabupa.com/pages/doc/policy_wording/ReAssure-2.0-Policy-Wording.pdf",
-    "HDFC_ERGO_Optima_Restore.pdf": "https://algatesinsurance.in/resources/policy-documents/hdfc-ergo/optima-restore-policy-wordings.pdf", # Reliable mirror
     "ICICI_Lombard_iHealth.pdf": "https://www.icicilombard.com/docs/default-source/policy-wordings-product-brochure/complete-health-insurance-(ihealth)-new.pdf",
-    "IRDAI_Master_Circular_2024.pdf": "https://irdai.gov.in/documents/37343/991022/%E0%A4%B8%E0%A5%8D%E0%A4%B5%E0%A4%B0%E0%A5%8D%E0%A4%B5%E0%A4%B8%E0%A5%8D%E0%A4%A5%E0%A5%8D%E0%A4%AF+%E0%A4%AC%E0%A5%80%E0%A4%AE%E0%A4%BE+%E0%A4%B5%E0%A5%8D%E0%A4%AF%E0%A4%B5%E0%A4%B8%E0%A4%AF+%E0%A4%AA%E0%A4%B0+%E0%A4%AE%E0%A4%BE%E0%A4%B8%E0%A5%8D%E0%A4%9F%E0%A4%B0+%E0%A4%AA%E0%A4%B0%E0%A4%BF%E0%A4%AA%E0%A4%A4%E0%A5%8D%E0%A4%B0-%E0%A4%85%E0%A4%82%E0%A4%97%E0%A5%8D%E0%A4%B0%E0%A5%87%E0%A4%9C%E0%A5%80+_+Master+Circular+on+Health+Insurance+Business+-English.pdf/08a32828-dc1d-116f-0549-6db86d448651?version=1.0&t=1719833433399"
+    "Aditya_Birla_Activ_Health.pdf": "https://www.adityabirlacapital.com/healthinsurance/assets/pdf/policy-wording-form.pdf",
+    "SBI_General_Arogya_Sanjeevani.pdf": "https://content.sbigeneral.in/uploads/e14cc6abce7d4f4a8e9d0f1cf6f212e8.pdf",
+    "Tata_AIG_Medicare.pdf": "https://irdai.gov.in/documents/37343/931203/TATHLIP21225V022021_2020-2021.pdf/63626023-5d4a-32f7-2f30-0d58882c191c?version=1.1&download=true"
 }
 
-# The "Ultimate Truth" Statutes File Content
-STATUTES_CONTENT = """# INDIAN LEGAL KNOWLEDGE BASE (IRDAI & CONSUMER PROTECTION)
+# ---------------------------------------------------------
+# 3. STATUTES CONTENT
+# ---------------------------------------------------------
 
-## 1. CLAIM SETTLEMENT TIMELINES (IRDAI Reg 2016)
-**Regulation 27 (Settlement of Claims):**
-- An insurer must settle or reject a claim within **30 days** from the date of receipt of the last necessary document.
-- **Penalty Interest:** If the insurer delays payment beyond 30 days, they must pay interest at **2% above the Bank Rate** (set by RBI).
+STATUTES_CONTENT = """# INDIAN LEGAL KNOWLEDGE BASE (IRDAI, CPA & OMBUDSMAN)
 
-## 2. MORATORIUM PERIOD (The "Incontestable" Clause)
-**Master Circular on Health Insurance 2024:**
-- The Moratorium Period is **60 months (5 Years)**.
-- **Rule:** After 60 months of continuous coverage, an insurer **cannot** contest a claim on grounds of "Non-Disclosure" or "Misrepresentation" (except for proven fraud).
+## 1. CLAIM SETTLEMENT & INTEREST (The "30 Day" Rule)
+IRDAI Regulations (2017) Reg 15(10):
+- Insurer must settle or reject a claim within 30 days.
+- Investigation max timeline = 45 days.
+- Penalty interest = 2% above Bank Rate.
 
-## 3. PRE-EXISTING DISEASES (PED)
-**IRDAI Standardization of Exclusions (Code Excl01):**
-- Pre-Existing Diseases can only be excluded for a maximum of **48 months** (4 years).
-- **Definition:** A PED is any condition diagnosed or treated within 48 months *prior* to the first policy issuance.
+## 2. MORATORIUM PERIOD (5 Year Clause)
+IRDAI Master Circular 2024 (Clause 4.2):
+- After 60 months of coverage, claim cannot be rejected for non-disclosure unless fraud is proven.
 
-## 4. CONSUMER PROTECTION ACT, 2019 (CPA)
-**Section 2(42) - Definition of "Service":**
-- Healthcare is considered a "Service." Patients are "Consumers."
-- **Key Precedent:** Doctors/Hospitals are liable for "Deficiency in Service" unless the treatment was provided free of charge.
+## 3. CONSUMER PROTECTION ACT 2019
+Wrongful claim denial = Deficiency in Service.
 
-## 5. GRIEVANCE REDRESSAL (Ombudsman)
-**Rule 14 (Insurance Ombudsman Rules, 2017):**
-- If an insurer rejects a complaint or does not reply within **30 days**, the policyholder can approach the **Insurance Ombudsman**.
-- **Condition:** The claim value must not exceed **₹30 Lakhs**.
-- **Cost:** No fee for filing.
+## 4. INSURANCE OMBUDSMAN RULES 2017
+- Handles repudiation, delay, disputes.
+- Limit: ₹30 Lakhs.
+- Free, binding on insurer.
+
+## 5. STANDARDIZATION OF EXCLUSIONS (2019)
+- Mental Illness mandatory coverage.
+- Modern treatments like Robotic Surgery must be covered.
 """
 
+# ---------------------------------------------------------
+# 4. DIRECTORY SETUP
+# ---------------------------------------------------------
+
 def setup_directories():
-    """Creates the folder structure if it doesn't exist."""
-    base_path = os.path.join("data", "knowledge")
-    policy_path = os.path.join(base_path, "policies")
-    
-    os.makedirs(policy_path, exist_ok=True)
-    print(f"✅ Created directory: {policy_path}")
-    return base_path, policy_path
+    os.makedirs(POLICY_DIR, exist_ok=True)
+    print(f"📂 Using data directory: {DATA_DIR}")
+    print(f"📚 Knowledge base: {KNOWLEDGE_DIR}")
+    print(f"📄 Policies folder: {POLICY_DIR}")
+    return KNOWLEDGE_DIR, POLICY_DIR
+
+# ---------------------------------------------------------
+# 5. FILE DOWNLOADER
+# ---------------------------------------------------------
 
 def download_file(url, filename, folder):
-    """Downloads a single file with a progress indicator."""
     filepath = os.path.join(folder, filename)
-    
+
     if os.path.exists(filepath):
-        print(f"⚠️  File already exists: {filename}")
+        print(f"✔ Already exists: {filename}")
         return
 
-    print(f"⬇️  Downloading: {filename}...")
+    print(f"⬇️ Downloading: {filename}")
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
+
     try:
-        # Some Indian gov sites block scripts, so we use a browser User-Agent
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-        response = requests.get(url, headers=headers, stream=True)
-        response.raise_for_status()
-        
+        resp = requests.get(url, headers=headers, stream=True, timeout=20)
+        resp.raise_for_status()
+
         with open(filepath, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=8192):
+            for chunk in resp.iter_content(8192):
                 f.write(chunk)
+
         print(f"✅ Saved: {filename}")
-        
+
     except Exception as e:
-        print(f"❌ Failed to download {filename}: {e}")
+        print(f"❌ Error downloading {filename}: {e}")
+
+# ---------------------------------------------------------
+# 6. WRITE STATUTES
+# ---------------------------------------------------------
 
 def create_statutes_file(folder):
-    """Writes the Markdown statutes file."""
     filepath = os.path.join(folder, "statutes.md")
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(STATUTES_CONTENT)
-    print(f"✅ Generated Knowledge Base: {filepath}")
+    print(f"📜 Created statutes.md at: {filepath}")
+
+# ---------------------------------------------------------
+# 7. MAIN EXECUTION
+# ---------------------------------------------------------
 
 def main():
-    print("--- 🏛️  INITIALIZING ADVOCAI LAW LIBRARY 🏛️  ---")
-    
-    # 1. Setup Folders
+    print("\n--- 🏛 BUILDING ADVOCAI LEGAL ENGINE (INDIA) ---\n")
+
+    # Create directories
     knowledge_dir, policy_dir = setup_directories()
-    
-    # 2. Create Statutes File (The Regulatory Brain)
+
+    # Save statutes
     create_statutes_file(knowledge_dir)
-    
-    # 3. Download Policies (The Auditor Brain)
-    print("\n--- 📥 DOWNLOADING POLICY DOCUMENTS ---")
+
+    print(f"\n--- 📥 DOWNLOADING {len(POLICY_URLS)} POLICY DOCUMENTS ---\n")
+
     for name, url in POLICY_URLS.items():
         download_file(url, name, policy_dir)
-        time.sleep(1) # Be polite to the servers
+        time.sleep(1.5)
 
-    print("\n--- 🎉 SETUP COMPLETE ---")
-    print(f"1. Use 'data/knowledge/statutes.md' for your Regulatory Agent.")
-    print(f"2. Use 'data/knowledge/policies/*.pdf' for your Auditor Agent testing.")
+    print("\n🎉 LEGAL ENGINE READY!")
+    print(f"📂 Policies → {policy_dir}")
+    print(f"📜 Statutes → {os.path.join(knowledge_dir, 'statutes.md')}")
+    print("\nYou can now run the Regulatory Agent.\n")
 
 if __name__ == "__main__":
     main()
