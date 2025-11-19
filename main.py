@@ -12,7 +12,7 @@ from agents.clinician import run_clinician_agent, EvidenceList
 from agents.barrister import run_barrister_agent # Final agent import
 
 # --- CONFIGURATION ---
-MODEL_NAME = "gemini-2.5-pro" # Use the fast model for rapid development and testing
+MODEL_NAME = "gemini-2.5-flash" # Use the fast model for rapid development and testing
 
 def initialize_gemini_client():
     """Initializes the Gemini client and ensures environment is set up."""

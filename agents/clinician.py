@@ -40,9 +40,8 @@ def run_clinician_agent(client: genai.Client, denial_details: StructuredDenial) 
     
     system_instruction = (
         "You are the Clinician Agent, a specialized medical researcher. "
-        "Your task is to use the 'pubmed_search' tool to find 3-5 high-impact, "
-        "peer-reviewed articles that contradict the insurer's denial reason. "
-        "Your final response must strictly adhere to the provided Pydantic schema."
+        "To proceed, you **MUST FIRST CALL THE 'pubmed_search' TOOL** with the best possible query. "
+        "You may not provide a final answer or synthesis until after the tool output has been received."
     )
     
     print(f"[Clinician Status] LLM is reasoning and calling tool with query: {search_query[:50]}...")
