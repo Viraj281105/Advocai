@@ -1,0 +1,6 @@
+{
+  "DENIAL_CODE": "CO-50 (This procedure is not covered.)",
+  "PROCEDURE_DENIED": "Genomic Sequencing for Early Cancer Detection",
+  "INSURER_REASON_SNIPPET": "We determine that the requested procedure, Genomic Sequencing for Early Cancer Detection, is experimental, unproven, and therefore non-covered under the terms of your policy.",
+  "POLICY_CLAUSE_TEXT": "Coverage is limited to those services, treatments, and supplies that are medically necessary, provided they are not considered experimental, investigative, or unproven by generally accepted medical standards."
+}

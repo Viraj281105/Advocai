@@ -1,6 +1,7 @@
 # main.py
 
 import os
+import sys
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
@@ -11,7 +12,7 @@ from agents.clinician import run_clinician_agent, EvidenceList
 from agents.barrister import run_barrister_agent # Final agent import
 
 # --- CONFIGURATION ---
-MODEL_NAME = "gemini-2.5-flash" # Use the fast model for rapid development and testing
+MODEL_NAME = "gemini-2.5-pro" # Use the fast model for rapid development and testing
 
 def initialize_gemini_client():
     """Initializes the Gemini client and ensures environment is set up."""
@@ -87,14 +88,22 @@ def orchestrate_advocai_workflow(denial_path: str, policy_path: str):
 
 
 if __name__ == "__main__":
-    # --- File Paths (Ensure these PDFs exist in data/input) ---
-    DENIAL_PATH = "data/input/sample_denial.pdf"
-    POLICY_PATH = "data/input/sample_policy.pdf"
-    
-    # NOTE: Assuming you have now placed real PDF files in data/input for testing.
-    if not os.path.exists(DENIAL_PATH) or not os.path.exists(POLICY_PATH):
-        print("🚨 CRITICAL ERROR: Please place real PDF files named 'sample_denial.pdf' and 'sample_policy.pdf' in the data/input folder.")
-        print("Workflow cannot proceed without valid input documents.")
+    if len(sys.argv) < 2:
+        # Default to Case 1 if no argument is provided
+        case_id = "case_1" 
     else:
-        # Pass both paths to the orchestrator
+        # Get the case ID from the command line (e.g., 'case_2')
+        case_id = sys.argv[1] 
+
+    # --- Construct paths based on the dynamic case_id ---
+    DENIAL_PATH = f"data/input/denial_{case_id}.pdf"
+    POLICY_PATH = f"data/input/policy_{case_id}.pdf"
+
+    print(f"Loading Test Case: {case_id}...")
+
+    if not os.path.exists(DENIAL_PATH) or not os.path.exists(POLICY_PATH):
+        print(f"🚨 CRITICAL ERROR: Input files not found for case ID: {case_id}")
+        print(f"Expected files: {DENIAL_PATH} and {POLICY_PATH}")
+    else:
+        # Pass both dynamic paths to the orchestrator
         orchestrate_advocai_workflow(DENIAL_PATH, POLICY_PATH)
