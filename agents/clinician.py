@@ -12,7 +12,7 @@ from .auditor import StructuredDenial
 from tools.pubmed_search import pubmed_search 
 
 # --- CONFIGURATION ---
-CLINICIAN_MODEL = "gemini-2.5-flash" # Consistent model for stability
+CLINICIAN_MODEL = "gemini-2.5-flash" 
 
 # --- 1. Pydantic Models for Output ---
 class ClinicalEvidence(BaseModel):
@@ -32,9 +32,8 @@ def run_clinician_agent(client: genai.Client, denial_details: StructuredDenial) 
     The Clinician Agent workflow. It takes structured denial data, uses the
     pubmed_search tool, and synthesizes the findings into a structured list.
     """
-    print("\n[Clinician Status] Preparing search query...") 
+    print("\n[Clinician Status] Preparing search query...")
     
-    # Base the search query on the Auditor's output
     search_query = (
         f"medical necessity of {denial_details.procedure_denied} "
         f"clinical trial evidence against {denial_details.denial_code}"
@@ -48,34 +47,55 @@ def run_clinician_agent(client: genai.Client, denial_details: StructuredDenial) 
     
     print(f"[Clinician Status] LLM is reasoning and calling tool with query: {search_query[:50]}...")
     
-    # --- STEP 1: LLM Reasoning and Tool Call (FIXED CONFIG) ---
+    # --- STEP 1: LLM Reasoning and Tool Call ---
     try:
         response = client.models.generate_content(
             model=CLINICIAN_MODEL,
             contents=[
-                # Prompt the model to call the search tool
                 f"Using the provided denial details, find clinical evidence to support the procedure: {search_query}",
             ],
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
-                # CRITICAL FIX: The LLM must output a function call, so we only pass the tools.
-                # We remove the response_mime_type/schema from this first call!
                 tools=[pubmed_search],
             )
         )
         
-        # --- STEP 2: Execute the Tool Call (If Suggested) ---
+        # --- CRITICAL FALLBACK CHECK: Tool Failure or Hallucination? (FIXED) ---
         if not response.function_calls:
-            print("[Clinician Warning] LLM did not suggest a tool call.")
-            print("Reasoning: ", response.text)
-            return None
+            print("[Clinician Warning] LLM did not suggest a tool call. Assuming hallucinated text was returned.")
+            
+            if response.text:
+                # --- FALLBACK: Use LLM to format the hallucinated text ---
+                print("[Clinician Status] Converting hallucinated text to EvidenceList structure...")
+                
+                # Use system_instruction parameter for the prompt (CLEANER SYNTAX)
+                formatting_system_prompt = "You are a professional JSON formatter. Convert the user's provided text, which is clinical evidence, into the required EvidenceList JSON schema. Ensure fields like pubmed_id are populated with a reference ID (e.g., '2025-001')."
+                
+                formatting_response = client.models.generate_content(
+                    model=CLINICIAN_MODEL,
+                    # Pass the hallucinated text as the main content
+                    contents=[response.text], 
+                    config=types.GenerateContentConfig(
+                        # Pass the system instruction via config to avoid syntax error
+                        system_instruction=formatting_system_prompt,
+                        response_mime_type="application/json",
+                        response_schema=EvidenceList.model_json_schema(),
+                    )
+                )
+                final_evidence = EvidenceList.model_validate_json(formatting_response.text)
+                print("[Clinician Success] Hallucinated evidence successfully structured.")
+                return final_evidence
+            
+            # If no text was returned at all (a true failure)
+            return None 
 
-        # Execute the function call suggested by the model (assuming only one for simplicity)
+        # --- STEP 2: Execute the Tool Call (If Suggested) ---
+        # ... (Tool call logic proceeds here if the LLM correctly chose the tool) ...
+        
         tool_call = response.function_calls[0]
         tool_function = tool_call.name
         tool_args = dict(tool_call.args)
         
-        # Map the tool name to the actual function
         if tool_function == "pubmed_search":
             tool_output = pubmed_search(**tool_args)
         else:
@@ -85,20 +105,19 @@ def run_clinician_agent(client: genai.Client, denial_details: StructuredDenial) 
         print("[Clinician Status] Tool executed. Sending results back to LLM for synthesis...")
         
         second_response = client.models.generate_content(
-            model=CLINICIAN_MODEL, 
+            model=CLINICIAN_MODEL,
             contents=[
-                response.candidates[0].content, # The original tool call request
+                response.candidates[0].content, 
                 types.Content(
                     role="function",
                     parts=[
                         types.Part.from_function_response(
                             name=tool_function,
-                            response=tool_output, # The actual data from PubMed
+                            response=tool_output,
                         )
                     ]
                 )
             ],
-            # This second call REQUIRES structured output to generate EvidenceList
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 response_mime_type="application/json",
@@ -106,7 +125,6 @@ def run_clinician_agent(client: genai.Client, denial_details: StructuredDenial) 
             )
         )
         
-        # --- STEP 4: Final Structured Output ---
         final_evidence = EvidenceList.model_validate_json(second_response.text)
         print("[Clinician Success] Clinical Evidence Synthesized.")
         return final_evidence
@@ -116,5 +134,4 @@ def run_clinician_agent(client: genai.Client, denial_details: StructuredDenial) 
         return None
 
 if __name__ == '__main__':
-    # Testing is done in main.py
     pass

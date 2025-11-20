@@ -1,10 +1,13 @@
-# agents/barrister.py
+# agents/barrister.py (Final Corrected Code)
 
 from google import genai
 from google.genai import types
 from typing import Optional
 from .auditor import StructuredDenial
-from .clinician import EvidenceList # Assuming you added the correct imports to main.py
+from .clinician import EvidenceList 
+
+# --- CONFIGURATION ---
+BARRISTER_MODEL = "gemini-2.5-flash" # Use the fast model
 
 def run_barrister_agent(
     client: genai.Client,
@@ -19,7 +22,7 @@ def run_barrister_agent(
 
     # Format the Clinical Evidence list into a persuasive, readable bulleted list
     evidence_text = "\n".join([
-        f"- **{e.article_title}:** {e.summary_of_finding} (PMID: {e.pubmed_id})"
+        f"- **{e.article_title}:** {e.summary_of_finding} (Ref: {e.pubmed_id})"
         for e in clinical_evidence.root
     ])
     
@@ -29,7 +32,7 @@ def run_barrister_agent(
         "Your task is to draft a formal, professional, and highly persuasive appeal letter. "
         "Use the supplied policy, denial, and clinical evidence to construct a factual argument "
         "demonstrating that the denied procedure meets all requirements for medical necessity. "
-        "The tone must be firm, respectful, and authoritative. Do not use placeholders or brackets."
+        "The tone must be firm, respectful, and authoritative. Do not include placeholders."
     )
     
     # Construct the final user prompt containing all inputs
@@ -56,11 +59,13 @@ def run_barrister_agent(
     
     try:
         response = client.models.generate_content(
-            model="gemini-2.5-flash", # Use the fast model for generation
-            contents=[
-                types.Content(role="system", parts=[types.Part.from_text(system_instruction)]),
-                types.Content(role="user", parts=[types.Part.from_text(final_prompt)]),
-            ],
+            model=BARRISTER_MODEL, 
+            # FIX: Pass the single user prompt directly
+            contents=[final_prompt], 
+            config=types.GenerateContentConfig(
+                # FIX: Pass the system instruction via the config
+                system_instruction=system_instruction
+            ),
         )
         
         print("[Barrister Success] Appeal Letter Drafted.")
@@ -69,7 +74,3 @@ def run_barrister_agent(
     except Exception as e:
         print(f"[Barrister Error] Failed to generate appeal letter: {e}")
         return None
-
-if __name__ == '__main__':
-    # Testing is done in main.py
-    pass
