@@ -3,7 +3,7 @@
 from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
-from typing import List, Optional # Added Optional for clarity
+from typing import List, Optional 
 import json
 
 # Import the StructuredDenial model from the Auditor
@@ -12,7 +12,7 @@ from .auditor import StructuredDenial
 from tools.pubmed_search import pubmed_search 
 
 # --- CONFIGURATION ---
-CLINICIAN_MODEL = "gemini-2.5-flash" # Optimized for speed and quota stability
+CLINICIAN_MODEL = "gemini-2.5-flash" # Consistent model for stability
 
 # --- 1. Pydantic Models for Output ---
 class ClinicalEvidence(BaseModel):
@@ -32,7 +32,7 @@ def run_clinician_agent(client: genai.Client, denial_details: StructuredDenial) 
     The Clinician Agent workflow. It takes structured denial data, uses the
     pubmed_search tool, and synthesizes the findings into a structured list.
     """
-    print("\n[Clinician Status] Preparing search query...")
+    print("\n[Clinician Status] Preparing search query...") 
     
     # Base the search query on the Auditor's output
     search_query = (
@@ -48,18 +48,19 @@ def run_clinician_agent(client: genai.Client, denial_details: StructuredDenial) 
     
     print(f"[Clinician Status] LLM is reasoning and calling tool with query: {search_query[:50]}...")
     
-    # --- STEP 1: LLM Reasoning and Tool Call ---
+    # --- STEP 1: LLM Reasoning and Tool Call (FIXED CONFIG) ---
     try:
         response = client.models.generate_content(
-            model=CLINICIAN_MODEL, # Switched to FLASH
+            model=CLINICIAN_MODEL,
             contents=[
                 # Prompt the model to call the search tool
                 f"Using the provided denial details, find clinical evidence to support the procedure: {search_query}",
             ],
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
-                # Register the tool
-                tools=[pubmed_search]
+                # CRITICAL FIX: The LLM must output a function call, so we only pass the tools.
+                # We remove the response_mime_type/schema from this first call!
+                tools=[pubmed_search],
             )
         )
         
@@ -67,7 +68,6 @@ def run_clinician_agent(client: genai.Client, denial_details: StructuredDenial) 
         if not response.function_calls:
             print("[Clinician Warning] LLM did not suggest a tool call.")
             print("Reasoning: ", response.text)
-            # This handles the hallucination case seen previously
             return None
 
         # Execute the function call suggested by the model (assuming only one for simplicity)
@@ -85,7 +85,7 @@ def run_clinician_agent(client: genai.Client, denial_details: StructuredDenial) 
         print("[Clinician Status] Tool executed. Sending results back to LLM for synthesis...")
         
         second_response = client.models.generate_content(
-            model=CLINICIAN_MODEL, # Switched to FLASH
+            model=CLINICIAN_MODEL, 
             contents=[
                 response.candidates[0].content, # The original tool call request
                 types.Content(
@@ -98,6 +98,7 @@ def run_clinician_agent(client: genai.Client, denial_details: StructuredDenial) 
                     ]
                 )
             ],
+            # This second call REQUIRES structured output to generate EvidenceList
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 response_mime_type="application/json",
