@@ -298,7 +298,7 @@ pytest tests/e2e
 | Lead Developer        | Viraj Jadhao | virajjadhao281105 |
 | Documentation & Pitch | Bhumi Sirvi | bhumisirvi27 |
 | Clinical Agent Dev    | Harsh Jain | patterncracker |
-| Tools & Deployment    | Yash Doke | user_4          |
+| Tools & Deployment    | Yash Doke | yashdoke7 |
 
 ---
 
