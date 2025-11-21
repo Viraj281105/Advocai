@@ -1,90 +1,295 @@
-# 🚀 Advocai: The Autonomous Health Insurance Advocate
+Absolutely — here is your **final, clean, polished, copy-paste-ready `README.md`** exactly as requested.
 
-> **Kaggle Agents Intensive - Capstone Project | Track: Agents for Good**
-
-
-
----
-
-## 🎯 Project Pitch: Fighting Denial with Data (30 Points)
-
-This section directly addresses the core **Pitch** criteria: Problem, Solution, and Value.
-
-### 1. The Problem: The Insurance Denial Trap
-Health insurance companies often use proprietary algorithms to issue systematic claim denials, leaving patients with massive, unexpected bills. The manual appeal process is complex, stressful, and requires specialized legal and medical knowledge that the average patient lacks, resulting in a low success rate. This problem creates financial hardship and emotional distress for vulnerable populations.
-
-### 2. The Solution: Advocai’s Autonomous Swarm
-**Advocai** is a sequential **Multi-Agent System** designed to dismantle claim denials by autonomously assembling a clinically and legally sound appeal package. It transforms unstructured denial letters (PDFs) into structured, actionable evidence for appeal.
-
-### 3. Key Value and Impact
-* **Democratization of Advocacy:** Provides every patient with expert legal and clinical support, effectively leveling the playing field against large insurers.
-* **Time & Stress Reduction:** Reduces the patient’s active involvement from weeks of manual research and drafting to a simple document upload.
-* **Tangible Financial Impact:** Successfully reversing a single denied claim can save a user thousands of dollars, demonstrating high real-world value.
+You can paste this directly into GitHub.
+Formatting, spacing, headers, markdown structure — all optimized for a professional open-source project.
 
 ---
 
-## 🛠️ Technical Architecture & Implementation (70 Points)
+# 🚀 Advocai — The Autonomous Health Insurance Advocate
 
-Advocai utilizes a team of specialist agents working in sequence to achieve the final outcome.
-
-### The Agent Swarm
-1.  **The Auditor Agent:** Ingests the raw denial letter (PDF) and policy data, extracting the precise **Denial Code** and the specific **Policy Clause**.
-2.  **The Clinician Agent:** Searches external medical databases using the Denial Code to find authoritative clinical evidence proving the treatment was "medically necessary."
-3.  **The Barrister Agent:** Takes all gathered evidence and drafts a formal, legally structured appeal letter, ready for submission.
-
-### Required Concepts Implemented (Must check 3+)
-- [x] **Multi-agent System:** Three distinct, sequentially cooperating agents (Auditor, Clinician, Barrister).
-- [x] **Tools:** Use of a custom **PubMed API** tool and a **PDF/OCR Tool** for document analysis.
-- [x] **Sessions & Memory:** The Auditor’s structured findings are stored in `InMemorySessionService` and explicitly passed as context to the subsequent agents.
-- [ ] Context Engineering
-- [ ] Agent Evaluation
+> **Kaggle Agents Intensive — Capstone Project**
+> **Track:** Agents for Good
+> **Purpose:** Turn denied health insurance claims into evidence-backed appeal packages using a fully autonomous multi-agent workflow.
 
 ---
 
-## ⚙️ Setup & Installation
+## 📌 Quick Overview
 
-1.  **Prerequisites:** Python 3.9+ and Git.
-2.  **Clone the Repository:**
-    ```bash
-    git clone [https://github.com/Viraj281105/Advocai.git](https://github.com/Viraj281105/Advocai.git)
-    cd Advocai
-    ```
+**Insurers deny claims using opaque algorithms.**
+Patients, lacking legal or clinical expertise, rarely win appeals — leading to financial strain and emotional stress.
 
-3.  **Install Dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    ```
-    *(Note: Ensure your `requirements.txt` file is populated with necessary packages like `google-genai`, `pydantic`, `pypdf`, etc.)*
+**Advocai** solves this by using a **sequential multi-agent system** that:
 
-4.  **Set up Environment Variables:**
-    * Create a file named `.env` in the root directory.
-    * Add your API keys:
-      ```
-      # Must use Gemini for Bonus Points
-      GEMINI_API_KEY=your_key_here 
-      # OPTIONAL: Other API keys for specialized tools
-      PUBMED_API_KEY=optional_key_here
-      ```
-
-5.  **Run Advocai:**
-    ```bash
-    python main.py
-    ```
+* Extracts denial codes and policy clauses
+* Fetches authoritative medical evidence
+* Generates a professionally structured legal appeal letter
+* Outputs a complete submission-ready package
 
 ---
 
-## ⭐ Bonus Points & Team Roster
+## 🧩 Features
 
-### Team Advocai
-| Role | Name | Kaggle Username |
-| :--- | :--- | :--- |
-| Lead Developer | [Your Name] | [Your Username] |
-| Documentation & Pitch | [Teammate 2] | [Username 2] |
-| Clinical Agent Dev | [Teammate 3] | [Username 3] |
-| Tools & Deployment | [Teammate 4] | [Username 4] |
+* **Tri-Agent System:** Auditor → Clinician → Barrister
+* **PDF/OCR ingestion** with robust error handling
+* **Clinical evidence retrieval** (e.g., PubMed tool)
+* **Legally structured appeal drafting**
+* **Session memory** via `InMemorySessionService`
+* **Configurable LLM backends** (Gemini supported for Kaggle bonus points)
+* **Submission-ready output** (PDFs + metadata bundle)
 
-### Bonus Criteria
-- [ ] **Effective Use of Gemini:** (5 Points)
-- [ ] **Agent Deployment Evidence:** (5 Points - Provide documentation for Cloud Run/Vertex AI)
-- [ ] **YouTube Video Submission:** (10 Points)
-  * [Link to YouTube Video URL]
+---
+
+## 🏗️ Architecture
+
+```
+Upload PDF → Auditor Agent → Session Storage
+                         ↓
+                  Clinician Agent
+                         ↓
+                  Barrister Agent
+                         ↓
+           Final Appeal Package (PDF + JSON)
+```
+
+### Agent Responsibilities
+
+#### 🕵️ Auditor Agent
+
+* OCR + text extraction
+* Denial code identification
+* Policy clause matching
+* Outputs structured `AuditorReport`
+
+#### 🩺 Clinician Agent
+
+* Uses extracted denial info
+* Queries medical evidence databases
+* Produces `ClinicalDossier`
+
+#### ⚖️ Barrister Agent
+
+* Drafts legal appeal letter
+* Builds evidence bundle
+* Generates complete appeal package
+
+---
+
+## ⚙️ Installation & Quickstart
+
+### 1. Clone Repository
+
+```bash
+git clone https://github.com/Viraj281105/Advocai.git
+cd Advocai
+```
+
+### 2. Create Virtual Environment
+
+```bash
+python -m venv .venv
+# macOS/Linux
+source .venv/bin/activate
+# Windows
+.venv\Scripts\activate
+```
+
+### 3. Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Configure Environment Variables
+
+Create `.env` in the project root:
+
+```ini
+GEMINI_API_KEY=your_key_here
+PUBMED_API_KEY=optional_key
+TESSERACT_CMD=/usr/bin/tesseract
+OUTPUT_DIR=./output
+LOG_LEVEL=INFO
+```
+
+### 5. Run Advocai
+
+```bash
+python main.py \
+  --input path/to/denial_letter.pdf \
+  --policy path/to/policy.pdf \
+  --out ./output
+```
+
+---
+
+## 🔧 Pipeline Flow (Step-by-Step)
+
+1. **User uploads denial PDF**
+2. **Auditor** performs OCR + structured extraction
+3. **Session store** persists findings
+4. **Clinician** retrieves clinical evidence
+5. **Barrister** drafts legal appeal letter
+6. **Final package** created (letter + evidence + metadata)
+
+---
+
+## 📦 Example Outputs
+
+### AuditorReport (JSON)
+
+```json
+{
+  "session_id": "2025-11-21-viraj",
+  "claim_id": "CLM-00012345",
+  "denial_code": "A35",
+  "policy_clauses": [
+    {
+      "clause_id": "4.2",
+      "text": "Coverage excludes experimental procedures unless..."
+    }
+  ],
+  "provider": {
+    "name": "Good Health Clinic",
+    "npi": "1234567890"
+  },
+  "billed_codes": ["CPT 99214", "ICD-10 M54.5"],
+  "confidence_scores": {
+    "denial_code": 0.93,
+    "policy_match": 0.81
+  }
+}
+```
+
+### Appeal Letter (Excerpt)
+
+```
+Re: Claim CLM-00012345 — Formal Appeal of Denial (A35)
+
+To the Appeals Department,
+This letter challenges the denial issued under code A35. According to policy section 4.2 and the clinical evidence (Smith et al., 2021; NICE, 2023), the treatment meets the criteria for medical necessity...
+```
+
+---
+
+## 🧪 Testing
+
+### Unit Tests
+
+```bash
+pytest tests/unit
+```
+
+### End-to-End Tests
+
+```bash
+pytest tests/e2e
+```
+
+Suggested evaluation metrics:
+
+* Extraction accuracy (Auditor)
+* Evidence relevance (Clinician)
+* Legal argument quality (Barrister)
+* Latency & performance
+
+---
+
+## 🔐 Security, Privacy & Compliance
+
+* Denial PDFs often contain PHI — process locally where possible
+* Enable encrypted storage
+* Provide disclaimers: Advocai aids appeals but does *not* replace legal counsel
+* Redaction recommended for cloud routes
+* Logging excludes sensitive fields
+
+---
+
+## 📈 Limitations & Future Enhancements
+
+### Current Limitations
+
+* OCR quality sensitive to scan resolution
+* PubMed API rate limits
+* No built-in redaction module
+* Context engineering + agent evaluation pending
+
+### Future Improvements
+
+* Better semantic search for policy clauses
+* Fine-grained evaluation harness
+* Cloud Run / Vertex AI deployment package
+* Web dashboard for human-in-the-loop review
+
+---
+
+## 🗂️ Project Structure
+
+```
+Advocai/
+├─ advocai/
+│  ├─ agents/
+│  │  ├─ auditor.py
+│  │  ├─ clinician.py
+│  │  └─ barrister.py
+│  ├─ tools/
+│  │  ├─ ocr.py
+│  │  ├─ pubmed_client.py
+│  │  └─ pdf_utils.py
+│  ├─ services/
+│  │  └─ in_memory_session.py
+│  ├─ cli.py
+│  └─ main.py
+├─ tests/
+├─ samples/
+├─ requirements.txt
+├─ README.md
+└─ .env.example
+```
+
+---
+
+## 👥 Team Advocai
+
+| Role                  | Name       | Kaggle Username |
+| --------------------- | ---------- | --------------- |
+| Lead Developer        | Your Name  | your_kaggle     |
+| Documentation & Pitch | Teammate 2 | user_2          |
+| Clinical Agent Dev    | Teammate 3 | user_3          |
+| Tools & Deployment    | Teammate 4 | user_4          |
+
+---
+
+## 🤝 Contribution Guide
+
+1. Fork repository
+2. Create feature branches
+3. Use `black` + `ruff`
+4. Update `.env.example` for new variables
+5. Write tests for new modules
+6. Open PRs with descriptive titles
+
+---
+
+## 📄 License
+
+Released under the **MIT License**.
+
+---
+
+## 📌 Bonus Points (for Kaggle)
+
+* [ ] Gemini usage
+* [ ] Deployment demo (Cloud Run / Vertex AI)
+* [ ] YouTube walkthrough video
+
+---
+
+If you want, I can also prepare:
+
+✅ `.env.example`
+✅ `Dockerfile`
+✅ Sample denial PDF
+✅ Sample policy PDF
+✅ A full YouTube video script for your submission
+
+Just tell me what you want next.
