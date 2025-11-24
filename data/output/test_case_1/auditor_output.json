@@ -1,0 +1,10 @@
+{
+    "denial_code": "CO-50",
+    "policy_clause_text": "Coverage is limited to medically necessary treatments that are not considered experimental or unproven.",
+    "confidence_score": 0.92,
+    "summary_text": "The insurer denied genomic sequencing as experimental and unproven.",
+    "raw_evidence_chunks": [
+        "The claim was denied with denial code CO-50.",
+        "The requested genomic sequencing was deemed experimental and therefore non-covered."
+    ]
+}

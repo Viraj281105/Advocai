@@ -1,0 +1,14 @@
+{
+    "legal_points": [
+        {
+            "statute": "IRDAI Regulation 4.3",
+            "summary": "Insurers must provide coverage for medically necessary procedures unless explicitly excluded.",
+            "matching_clause": "Genomic sequencing meets generally accepted medical standards."
+        },
+        {
+            "statute": "Policy Clause 4.2",
+            "summary": "Coverage cannot be denied solely on the basis that a procedure is newly adopted if clinical evidence supports its effectiveness.",
+            "matching_clause": "Genomic sequencing is supported by emerging but credible scientific literature."
+        }
+    ]
+}

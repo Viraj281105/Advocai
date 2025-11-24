@@ -1,0 +1,16 @@
+{
+    "evidence": [
+        {
+            "pmid": "2024001",
+            "title": "Saliva-microbiome-derived signatures for early lung cancer detection",
+            "abstract": "Genomic sequencing of salivary microbiota identified strong biomarker signatures for early cancer detection.",
+            "relevance_score": 0.92
+        },
+        {
+            "pmid": "2024002",
+            "title": "Genome sequencing for understanding early osteosarcoma evolution and guiding treatment",
+            "abstract": "Early genomic mutations were identified well before clinical detection, demonstrating clinical utility of genomic sequencing.",
+            "relevance_score": 0.88
+        }
+    ]
+}
