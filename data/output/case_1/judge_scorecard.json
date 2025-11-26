@@ -1,0 +1,31 @@
+{
+    "overall_score": 18,
+    "status": "needs_revision",
+    "sub_scores": {
+        "factual_accuracy": 0,
+        "citation_consistency": 0,
+        "logical_adequacy": 0,
+        "tone_professionalism": 90,
+        "hallucination_risk": 0
+    },
+    "issues": [
+        {
+            "id": "ISSUE-1",
+            "severity": "medium",
+            "location_in_letter": {
+                "sentence_index": 0
+            },
+            "description": "Partially supported claim. Missing: clinical evidence, regulatory evidence",
+            "evidence_refs": [
+                "DenialCode:co-50",
+                "InsurerReasonSnippet"
+            ],
+            "suggested_fix": "Strengthen the argument by adding missing evidence."
+        }
+    ],
+    "confidence_estimate": 0.85,
+    "meta": {
+        "generated_at": "2025-11-26T17:04:53.598990",
+        "version": "v1.3"
+    }
+}

@@ -1,340 +1,314 @@
-from pydantic import BaseModel
-from typing import List, Optional, Dict
+# agents/judge.py
+from pydantic import BaseModel, Field, model_validator
+from typing import List, Optional, Dict, Any
 from datetime import datetime
+import os
+import json
+import re
+import difflib
+import logging
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
-
+# ============================================================
+# Pydantic Models
+# ============================================================
 class Issue(BaseModel):
     id: str
-    severity: str                     # "low" | "medium" | "high"
-    location_in_letter: Optional[Dict] = None   # e.g., {"sentence_index": 3}
+    severity: str = Field(..., description='"low" | "medium" | "high"')
+    location_in_letter: Optional[Dict] = None
     description: str
     evidence_refs: Optional[List[str]] = None
     suggested_fix: Optional[str] = None
 
 
 class SubScores(BaseModel):
-    factual_accuracy: int
-    citation_consistency: int
-    logical_adequacy: int
-    tone_professionalism: int
-    hallucination_risk: int
+    factual_accuracy: int = Field(..., ge=0, le=100)
+    citation_consistency: int = Field(..., ge=0, le=100)
+    logical_adequacy: int = Field(..., ge=0, le=100)
+    tone_professionalism: int = Field(..., ge=0, le=100)
+    hallucination_risk: int = Field(..., ge=0, le=100)
 
 
 class JudgeScorecard(BaseModel):
-    overall_score: int
-    status: str                       # "approve" | "needs_revision"
+    overall_score: int = Field(..., ge=0, le=100)
+    status: str
     sub_scores: SubScores
     issues: List[Issue]
-    confidence_estimate: float
-    meta: Optional[Dict] = None
+    confidence_estimate: float = Field(..., ge=0.0, le=1.0)
+    meta: Optional[Dict[str, Any]] = None
 
-import os
-import json
+    @model_validator(mode="before")
+    def compute_overall(cls, values):
+        if "overall_score" not in values:
+            subs = values.get("sub_scores")
+            if not subs:
+                return values
+
+            if isinstance(subs, SubScores):
+                v = subs.model_dump()
+            else:
+                v = subs
+
+            overall = int(
+                (
+                    v["factual_accuracy"]
+                    + v["citation_consistency"]
+                    + v["logical_adequacy"]
+                    + v["tone_professionalism"]
+                    - v["hallucination_risk"]
+                )
+                / 5
+            )
+            values["overall_score"] = overall
+            values["status"] = "approve" if overall >= 85 else "needs_revision"
+
+        return values
 
 
-# ---------- File Loader Helpers ----------
-
-def load_json(path: str):
-    """Safely load a JSON file. Returns None if missing."""
+# ============================================================
+# Loaders
+# ============================================================
+def load_json(path):
     if not os.path.exists(path):
-        print(f"[WARNING] Missing file: {path}")
+        logger.warning(f"[Judge] Missing JSON: {path}")
         return None
     try:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception as e:
-        print(f"[ERROR] Failed to load {path}: {e}")
+        logger.error(f"[Judge] Failed to load JSON {path}: {e}")
         return None
 
 
-def load_text(path: str):
-    """Safely load a text file. Returns None if missing."""
+def load_text(path):
     if not os.path.exists(path):
-        print(f"[WARNING] Missing file: {path}")
+        logger.warning(f"[Judge] Missing text: {path}")
         return None
     try:
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
     except Exception as e:
-        print(f"[ERROR] Failed to load {path}: {e}")
+        logger.error(f"[Judge] Failed to load text {path}: {e}")
         return None
 
 
-# ---------- Main Loader for Judge Agent ----------
-
-def load_all_inputs(session_dir: str):
-    """
-    Loads all necessary outputs from other agents.
-    session_dir = folder like data/output/
-    """
-
-    auditor_path = os.path.join(session_dir, "auditor_output.json")
-    clinician_path = os.path.join(session_dir, "clinician_output.json")
-    regulatory_path = os.path.join(session_dir, "regulatory_output.json")
-    barrister_path = os.path.join(session_dir, "barrister_output.txt")
-
+def load_all_inputs(session_dir):
     return {
-        "auditor": load_json(auditor_path),
-        "clinician": load_json(clinician_path),
-        "regulatory": load_json(regulatory_path),
-        "barrister": load_text(barrister_path),
+        "auditor": load_json(os.path.join(session_dir, "auditor_output.json")),
+        "clinician": load_json(os.path.join(session_dir, "clinician_output.json")),
+        "regulatory": load_json(os.path.join(session_dir, "regulatory_output.json")),
+        "barrister": load_text(os.path.join(session_dir, "barrister_output.txt")),
     }
 
 
-import re
-
-# ---------- Sentence Splitting Helper ----------
-
-def split_into_sentences(text: str):
-    """
-    Splits the final appeal letter into clean, indexed sentences.
-    Returns a list of sentences.
-    """
+# ============================================================
+# Helpers
+# ============================================================
+def split_into_sentences(text):
     if not text:
         return []
 
-    # Basic sentence splitter
-    raw_sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+    text = re.sub(r"[\\r\\n]+", " ", text)
+    parts = re.split(r"(?<=[.!?])\\s+(?=[A-Z0-9\\[]) ", text)
 
-    # Clean & remove empty sentences
-    sentences = [s.strip() for s in raw_sentences if s.strip()]
+    return [s.strip() for s in parts if s.strip()]
 
-    return sentences
 
-# ---------- Claim Detection Helper ----------
-
-def identify_claim_sentences(sentences: list):
-    """
-    Labels sentences as CLAIM or NON-CLAIM using simple keyword heuristics.
-    Returns a list of dict: {sentence, label}
-    """
+def identify_claim_sentences(sentences):
     claim_keywords = [
-        "evidence",
-        "clinical",
-        "study",
-        "research",
-        "medically necessary",
-        "treatment",
-        "denial",
-        "policy",
-        "regulation",
-        "coverage",
-        "required",
-        "should be covered",
-        "support",
-        "effective",
-        "beneficial"
+        "evidence", "clinical", "study", "research", "medically necessary",
+        "medical necessity", "denial", "policy", "regulation",
+        "coverage", "required", "should be covered", "support",
+        "effective", "beneficial", "recommended", "indicated",
+        "dispute", "argue", "counter"
     ]
 
-    results = []
-
-    for index, sentence in enumerate(sentences):
-        sentence_lower = sentence.lower()
-
-        # Check if any keyword appears in sentence
-        is_claim = any(kw in sentence_lower for kw in claim_keywords)
-
-        results.append({
-            "sentence_index": index,
-            "sentence": sentence,
+    out = []
+    for i, s in enumerate(sentences):
+        lower = s.lower()
+        is_claim = any(k in lower for k in claim_keywords)
+        out.append({
+            "sentence_index": i,
+            "sentence": s,
             "label": "CLAIM" if is_claim else "NON_CLAIM"
         })
-
-    return results
-
-import difflib
-
-# ---------- Evidence Linking Helper ----------
-
-def link_evidence_to_claim(sentence: str, auditor, clinician, regulatory):
-    """
-    Attempts to link a claim sentence to clinical, legal, and denial evidence.
-    Returns a dict with evidence matches.
-    """
-
-    sentence_lower = sentence.lower()
-
-    matches = {
-        "auditor": [],
-        "clinician": [],
-        "regulatory": []
-    }
+    return out
 
 
-    # ----- 1. Match with Auditor evidence (denial information) -----
+def link_evidence_to_claim(sentence, auditor, clinician, regulatory):
+    s = sentence.lower()
+    matches = {"auditor": [], "clinician": [], "regulatory": []}
+
+    # ---------------- AUDITOR ----------------
     if auditor:
-        # Raw evidence chunks (text extracted from PDF)
-        raw_chunks = auditor.get("raw_evidence_chunks", [])
-        for chunk in raw_chunks:
-            ratio = difflib.SequenceMatcher(None, sentence_lower, chunk.lower()).ratio()
-            if ratio > 0.25:     # simple fuzzy match threshold
-                matches["auditor"].append(chunk)
+        for chunk in auditor.get("raw_evidence_chunks", []):
+            try:
+                ratio = difflib.SequenceMatcher(None, s, chunk.lower()).ratio()
+                if ratio > 0.35:
+                    matches["auditor"].append(chunk[:50])
+            except:
+                pass
 
-        # Match denial code or keywords
-        denial_code = auditor.get("denial_code", "")
-        if denial_code.lower() in sentence_lower:
-            matches["auditor"].append(f"[Matched denial code: {denial_code}]")
+        # denial code match
+        dc = auditor.get("denial_code", "").lower()
+        if dc and dc in s:
+            matches["auditor"].append(f"DenialCode:{dc}")
 
-    # ----- 2. Match with Clinician evidence (PubMed abstracts) -----
-    if clinician and "evidence" in clinician:
-        for entry in clinician["evidence"]:
-            abstract = entry.get("abstract", "")
-            ratio = difflib.SequenceMatcher(None, sentence_lower, abstract.lower()).ratio()
-            if ratio > 0.20:
-                matches["clinician"].append(f"PMID:{entry.get('pmid')}")
+        snippet = (auditor.get("insurer_reason_snippet") or "").lower()
+        if snippet:
+            words = snippet.split()[:4]
+            if any(w in s for w in words):
+                matches["auditor"].append("InsurerReasonSnippet")
 
-    # ----- 3. Match with Regulatory evidence (legal leverage) -----
-    if regulatory and "legal_points" in regulatory:
-        for entry in regulatory["legal_points"]:
-            summary = entry.get("summary", "")
-            ratio = difflib.SequenceMatcher(None, sentence_lower, summary.lower()).ratio()
-            if ratio > 0.20:
-                matches["regulatory"].append(entry.get("statute"))
+
+    # ---------------- CLINICIAN ----------------
+    if clinician and isinstance(clinician, dict):
+        for entry in clinician.get("root", []):
+            title = (entry.get("article_title") or "").lower()
+            summary = (entry.get("summary_of_finding") or "").lower()
+            pmid = entry.get("pubmed_id", "").lower()
+
+            combined = f"{title} {summary} {pmid}"
+
+            ratio = difflib.SequenceMatcher(None, s, combined).ratio()
+            if pmid and pmid in s:
+                ratio = 1.0
+
+            if ratio > 0.25:
+                matches["clinician"].append(f"PMID:{pmid or 'unknown'}")
+
+
+    # ---------------- REGULATORY ----------------
+    if regulatory and isinstance(regulatory, dict):
+        legal_points = regulatory.get("legal_points", [])
+        if isinstance(legal_points, list):
+            for lp in legal_points:
+                statute = (lp.get("statute") or lp.get("reference") or "unknown").lower()
+                summary = (lp.get("summary") or lp.get("argument") or "").lower()
+
+                if statute in s or difflib.SequenceMatcher(None, s, summary).ratio() > 0.20:
+                    matches["regulatory"].append(statute)
+        else:
+            combined = ""
+            for key in ("argument", "action", "violation"):
+                if isinstance(regulatory.get(key), str):
+                    combined += regulatory[key] + " "
+
+            if combined.strip():
+                ratio = difflib.SequenceMatcher(None, s, combined.lower()).ratio()
+                if ratio > 0.18:
+                    matches["regulatory"].append("RegulatorySummary")
 
     return matches
 
-# ---------- Scoring Engine ----------
 
-def score_claim_evidence(matches: dict):
-    """
-    Scores a single claim based on how much evidence supports it.
-    Hybrid scoring: simple + ready for advanced additions.
-    """
+# ============================================================
+# Scoring
+# ============================================================
+def score_claim_evidence(matches):
     score = 0
     details = []
 
-    # ----- Auditor evidence (denial match) -----
     if matches["auditor"]:
-        score += 30
-        details.append("Matched denial evidence")
+        score += 20
+        details.append("Auditor evidence matched")
 
-    # ----- Clinician evidence (medical) -----
     if matches["clinician"]:
-        score += 30
-        details.append("Matched clinical evidence")
+        score += 40
+        details.append("Clinical evidence matched")
 
-    # ----- Regulatory evidence (legal) -----
     if matches["regulatory"]:
-        score += 30
-        details.append("Matched legal evidence")
+        score += 40
+        details.append("Regulatory evidence matched")
 
-    # ----- Partial credit -----
     if score == 0:
-        # No evidence → high hallucination risk later
-        details.append("No supporting evidence found")
+        details.append("No evidence matched")
 
     return score, details
 
 
-def compute_overall_scores(claim_results: list):
-    """
-    Aggregates claim-level scores to produce:
-    - factual accuracy
-    - citation consistency
-    - logical adequacy
-    - tone professionalism (placeholder)
-    - hallucination risk
-    """
+def compute_overall_scores(claim_results):
+    claims = [c for c in claim_results if c["label"] == "CLAIM"]
+    if not claims:
+        return {
+            "factual_accuracy": 95,
+            "citation_consistency": 95,
+            "logical_adequacy": 95,
+            "tone_professionalism": 90,
+            "hallucination_risk": 0
+        }
 
-    total_claims = len(claim_results)
-    supported_claims = 0
-    citation_issues = 0
-    hallucinations = 0
+    supported = sum(1 for c in claims if c["score"] >= 30)
+    hallucinations = sum(1 for c in claims if c["score"] == 0)
 
-    for result in claim_results:
-        if result["score"] >= 30:
-            supported_claims += 1
-        if result["score"] == 0:
-            hallucinations += 1
-
-    if total_claims == 0:
-        factual_accuracy = 100
-        hallucination_risk = 0
-    else:
-        factual_accuracy = int((supported_claims / total_claims) * 100)
-        hallucination_risk = int((hallucinations / total_claims) * 100)
-
-    # Placeholder values — will refine in Step 8
-    citation_consistency = factual_accuracy
-    logical_adequacy = factual_accuracy
-    tone_professionalism = 90
+    factual = int((supported / len(claims)) * 100)
+    halluc = int((hallucinations / len(claims)) * 100)
 
     return {
-        "factual_accuracy": factual_accuracy,
-        "citation_consistency": citation_consistency,
-        "logical_adequacy": logical_adequacy,
-        "tone_professionalism": tone_professionalism,
-        "hallucination_risk": hallucination_risk
+        "factual_accuracy": factual,
+        "citation_consistency": factual,
+        "logical_adequacy": factual,
+        "tone_professionalism": 90,
+        "hallucination_risk": halluc,
     }
 
 
-# ---------- Issue Detection Engine ----------
-
-def detect_issues(claim_results: list):
-    """
-    Creates a list of issues based on unsupported claims,
-    missing citations, and hallucination risks.
-    """
-
+def detect_issues(claim_results):
     issues = []
-    issue_counter = 1
+    counter = 1
 
-    for claim in claim_results:
+    for c in claim_results:
+        if c["label"] != "CLAIM":
+            continue
 
-        # Case 1: No evidence supports the claim
-        if claim["score"] == 0:
-            issues.append({
-                "id": f"ISSUE-{issue_counter}",
-                "severity": "high",
-                "location_in_letter": {"sentence_index": claim["sentence_index"]},
-                "description": f"Unsupported claim: '{claim['sentence']}'",
-                "evidence_refs": [],
-                "suggested_fix": "Add clinical, legal, or denial evidence to support this claim."
-            })
-            issue_counter += 1
+        score = c["score"]
 
-        # Case 2: Partial support, but missing legal or clinical evidence
-        elif claim["score"] == 30 or claim["score"] == 60:
-            missing = []
-            if not claim["matches"]["auditor"]:
-                missing.append("denial evidence")
-            if not claim["matches"]["clinician"]:
-                missing.append("clinical evidence")
-            if not claim["matches"]["regulatory"]:
-                missing.append("legal evidence")
+        # ---------------- UNSUPPORTED ----------------
+        if score == 0:
+            issues.append(Issue(
+                id=f"ISSUE-{counter}",
+                severity="high",
+                location_in_letter={"sentence_index": c["sentence_index"]},
+                description=f"Unsupported claim: '{c['sentence']}'",
+                evidence_refs=[],
+                suggested_fix="Add clinical/regulatory evidence or remove the claim."
+            ))
+            counter += 1
+            continue
 
-            # Flatten evidence
-            evidence_list = []
-            for source, items in claim["matches"].items():
-                if items:
-                    for it in items:
-                        evidence_list.append(str(it))
+        # ---------------- PARTIALLY SUPPORTED ----------------
+        missing = []
+        if not c["matches"]["clinician"]:
+            missing.append("clinical evidence")
+        if not c["matches"]["regulatory"]:
+            missing.append("regulatory evidence")
 
-            issues.append({
-                "id": f"ISSUE-{issue_counter}",
-                "severity": "medium",
-                "location_in_letter": {"sentence_index": claim["sentence_index"]},
-                "description": f"Partially supported claim: '{claim['sentence']}'. Missing: {', '.join(missing)}.",
-                "evidence_refs": evidence_list,
-                "suggested_fix": "Strengthen this claim by citing the missing evidence sources."
-            })
-            issue_counter += 1
+        if missing:
+            refs = []
+            for src, lst in c["matches"].items():
+                if lst:
+                    refs.extend(lst)
+
+            issues.append(Issue(
+                id=f"ISSUE-{counter}",
+                severity="medium",
+                location_in_letter={"sentence_index": c["sentence_index"]},
+                description=f"Partially supported claim. Missing: {', '.join(missing)}",
+                evidence_refs=list(set(refs)),
+                suggested_fix="Strengthen the argument by adding missing evidence."
+            ))
+            counter += 1
 
     return issues
 
-# ---------- Main Judge Agent Pipeline ----------
 
+# ============================================================
+# Main Pipeline
+# ============================================================
 def run_judge_agent(session_dir="data/output/"):
-    """
-    The full pipeline that:
-    - loads agent outputs
-    - processes the letter
-    - scores everything
-    - generates a final scorecard
-    """
-
-    print("\n[Judge Agent] Loading inputs...")
+    logger.info("[Judge] Loading inputs...")
     inputs = load_all_inputs(session_dir)
 
     auditor = inputs["auditor"]
@@ -343,110 +317,74 @@ def run_judge_agent(session_dir="data/output/"):
     letter = inputs["barrister"]
 
     if not letter:
-        print("[ERROR] No final appeal letter found. Cannot run Judge Agent.")
+        logger.error("[Judge] No appeal letter found.")
         return None
 
-    # ----- Step 1: Sentence splitting -----
     sentences = split_into_sentences(letter)
+    label_data = identify_claim_sentences(sentences)
 
-    # ----- Step 2: Claim detection -----
-    claim_data = identify_claim_sentences(sentences)
-
-    # ----- Step 3: Evidence linking -----
     claim_results = []
-    for entry in claim_data:
-        matches = link_evidence_to_claim(
-            entry["sentence"],
-            auditor,
-            clinician,
-            regulatory
-        )
-        score, details = score_claim_evidence(matches)
+    for entry in label_data:
+        s = entry["sentence"]
+        if entry["label"] == "CLAIM":
+            matches = link_evidence_to_claim(s, auditor, clinician, regulatory)
+            score, details = score_claim_evidence(matches)
+        else:
+            matches, score, details = {"auditor": [], "clinician": [], "regulatory": []}, 0, ["Non-claim"]
 
         claim_results.append({
             "sentence_index": entry["sentence_index"],
-            "sentence": entry["sentence"],
+            "sentence": s,
             "label": entry["label"],
             "matches": matches,
             "score": score,
             "score_details": details
         })
 
-    # ----- Step 4: Compute global scores -----
-    subscore_values = compute_overall_scores(claim_results)
+    subscores = SubScores(**compute_overall_scores(claim_results))
+    issues = detect_issues(claim_results)
 
-    subscores = SubScores(
-        factual_accuracy=subscore_values["factual_accuracy"],
-        citation_consistency=subscore_values["citation_consistency"],
-        logical_adequacy=subscore_values["logical_adequacy"],
-        tone_professionalism=subscore_values["tone_professionalism"],
-        hallucination_risk=subscore_values["hallucination_risk"]
-    )
-
-    # ----- Step 5: Issue detection -----
-    issues_raw = detect_issues(claim_results)
-    issues = [Issue(**issue) for issue in issues_raw]
-
-    # ----- Step 6: Final score -----
-    overall_score = int(
-        (subscores.factual_accuracy +
-         subscores.citation_consistency +
-         subscores.logical_adequacy +
-         subscores.tone_professionalism -
-         subscores.hallucination_risk) / 5
-    )
-
-    status = "approve" if overall_score >= 85 else "needs_revision"
-
-    # ----- Step 7: Build Scorecard -----
     scorecard = JudgeScorecard(
-        overall_score=overall_score,
-        status=status,
         sub_scores=subscores,
         issues=issues,
         confidence_estimate=0.85,
-        meta={
-            "generated_at": datetime.utcnow().isoformat(),
-            "judge_agent_version": "v1.0"
-        }
+        meta={"generated_at": datetime.utcnow().isoformat(), "version": "v1.3"}
     )
 
-    # ----- Step 8: Save JSON output -----
-    json_path = f"{session_dir}/judge_scorecard.json"
-    with open(json_path, "w", encoding="utf-8") as f:
-        f.write(scorecard.json(indent=4))
+    # ---------------- SAVE JSON ----------------
+    os.makedirs(session_dir, exist_ok=True)
+    json_path = os.path.join(session_dir, "judge_scorecard.json")
+    try:
+        with open(json_path, "w", encoding="utf-8") as f:
+            f.write(json.dumps(scorecard.model_dump(), indent=4))
+        logger.info(f"[Judge] Scorecard saved to {json_path}")
+    except Exception as e:
+        logger.error(f"[Judge] Failed to save JSON: {e}")
 
+    # ---------------- SAVE MARKDOWN ----------------
+    md_path = os.path.join(session_dir, "judge_report.md")
+    try:
+        with open(md_path, "w", encoding="utf-8") as f:
+            f.write("# Judge Agent Report\n\n")
+            f.write(f"**Status:** {scorecard.status}\n")
+            f.write(f"**Overall Score:** {scorecard.overall_score}\n\n")
 
-    print(f"[Judge Agent] Scorecard saved at: {json_path}")
+            f.write("## Sub Scores\n")
+            for k, v in subscores.model_dump().items():
+                f.write(f"- **{k.title().replace('_', ' ')}:** {v}\n")
 
-    # ----- Step 9: Save Markdown report -----
-    md_path = f"{session_dir}/judge_report.md"
-    with open(md_path, "w", encoding="utf-8") as f:
-        f.write("# Judge Agent Report\n\n")
-        f.write(f"**Status:** {status}\n\n")
-        f.write(f"**Overall Score:** {overall_score}\n\n")
+            f.write("\n## Issues\n")
+            if not issues:
+                f.write("No issues found.\n")
+            else:
+                for issue in issues:
+                    f.write(f"\n### {issue.id} — {issue.severity.upper()}\n")
+                    f.write(f"**Description:** {issue.description}\n")
+                    f.write(f"**Sentence Index:** {issue.location_in_letter.get('sentence_index')}\n")
+                    if issue.evidence_refs:
+                        f.write(f"**Evidence Refs:** {', '.join(issue.evidence_refs)}\n")
+    except Exception as e:
+        logger.error(f"[Judge] Failed to save MD: {e}")
 
-        f.write("## Sub Scores:\n")
-        for name, value in subscore_values.items():
-            f.write(f"- **{name.replace('_',' ').title()}:** {value}\n")
-
-        f.write("\n## Issues:\n")
-        if not issues:
-            f.write("No issues found.\n")
-        else:
-            for issue in issues:
-                f.write(f"\n### {issue.id}\n")
-                f.write(f"- **Severity:** {issue.severity}\n")
-                f.write(f"- **Sentence Index:** {issue.location_in_letter}\n")
-                f.write(f"- **Description:** {issue.description}\n")
-                f.write(f"- **Suggested Fix:** {issue.suggested_fix}\n")
-                f.write(f"- **Evidence Refs:** {issue.evidence_refs}\n")
-
-    print(f"[Judge Agent] Markdown report saved at: {md_path}")
-
+    logger.info("[Judge] Completed successfully.")
     return scorecard
-
-
-
-if __name__ == "__main__":
-    run_judge_agent("data/output/test_case_1/")

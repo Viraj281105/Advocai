@@ -1,60 +1,146 @@
 # tools/pubmed_search.py
+"""
+Advocai – PubMed Search Tool (LLM-Safe Version)
+Structured output, no stdout pollution, robust XML parsing, retries,
+and JSON-return contract for Gemini function-call mode.
+"""
 
 import os
+import json
+import re
+import time
 import requests
-from typing import List, Dict
+import xml.etree.ElementTree as ET
+from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 
-# Load .env file explicitly if not done in main
-load_dotenv() 
+load_dotenv()
 
 PUBMED_BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
 PUBMED_API_KEY = os.getenv("PUBMED_API_KEY")
 
-def pubmed_search(query: str, max_results: int = 3) -> List[Dict]:
+
+# ----------------------------------------------------------------------
+# SAFER XML PARSING
+# ----------------------------------------------------------------------
+def _extract_text_recursive(element: ET.Element) -> str:
+    """Extracts the full text content of an XML element, including children."""
+    parts = []
+
+    if element.text:
+        parts.append(element.text)
+
+    for child in element:
+        parts.append(_extract_text_recursive(child))
+        if child.tail:
+            parts.append(child.tail)
+
+    joined = " ".join(parts)
+    return re.sub(r"\s+", " ", joined).strip()
+
+
+def _parse_efetch_xml(xml_content: str) -> List[Dict[str, str]]:
+    """Parse PubMed XML into structured article dicts."""
+    articles = []
+    try:
+        root = ET.fromstring(xml_content)
+
+        for article_element in root.findall(".//PubmedArticle"):
+            pmid = (article_element.findtext(".//PMID") or "").strip() or "N/A"
+            title = (article_element.findtext(".//ArticleTitle") or "").strip() or "No Title"
+
+            abstracts = []
+            for abs_el in article_element.findall(".//AbstractText"):
+                txt = _extract_text_recursive(abs_el)
+                if txt:
+                    abstracts.append(txt)
+
+            abstract = " ".join(abstracts)
+            abstract = re.sub(r"\s+", " ", abstract).strip()
+
+            articles.append({
+                "article_title": title,
+                "abstract": abstract,
+                "pubmed_id": pmid,
+            })
+
+    except Exception as e:
+        return []
+
+    return articles
+
+
+# ----------------------------------------------------------------------
+# NETWORK WITH RETRY
+# ----------------------------------------------------------------------
+def _request_with_retry(url: str, params: dict, *, retries: int = 3, delay: float = 0.4):
+    for attempt in range(retries):
+        try:
+            r = requests.get(url, params=params, timeout=10)
+            r.raise_for_status()
+            return r
+        except Exception:
+            if attempt == retries - 1:
+                return None
+            time.sleep(delay)
+    return None
+
+
+# ----------------------------------------------------------------------
+# MAIN TOOL FUNCTION (LLM-SAFE)
+# ----------------------------------------------------------------------
+def pubmed_search(query: str, max_results: int = 3) -> List[Dict[str, str]]:
     """
-    Performs a search on PubMed for medical and clinical articles. 
-    This tool is used by the Clinician Agent.
-
-    Args:
-        query: The search term (e.g., "efficacy of treatment X for denial code Y").
-        max_results: The maximum number of relevant article summaries to return.
-        
-    Returns:
-        A list of dictionaries containing article titles and raw abstracts.
+    LLM-Safe PubMed API wrapper.
+    ALWAYS returns a real LIST (never a JSON string, never prints).
     """
-    if not PUBMED_API_KEY:
-        # Proceed with limited use if key is missing, but warn the user
-        print("Warning: PUBMED_API_KEY not found. Using rate-limited access.")
-        
-    # --- 1. Search for article IDs (ESearch) ---
-    search_params = {
-        'db': 'pubmed',
-        'term': query,
-        'retmode': 'json',
-        'retmax': max_results,
-        'tool': 'AdvocaiAgent', # Best practice to identify your application
-        'api_key': PUBMED_API_KEY # Automatically adds key if available
-    }
-    
-    search_response = requests.get(f"{PUBMED_BASE_URL}esearch.fcgi", params=search_params)
-    search_data = search_response.json()
-    
-    id_list = search_data.get('esearchresult', {}).get('idlist', [])
-    
-    if not id_list:
-        return [{"error": "No relevant medical articles found for the query."}]
 
-    # --- 2. Retrieve detailed summaries (EFetch) ---
-    retrieve_params = {
-        'db': 'pubmed',
-        'id': ','.join(id_list),
-        'retmode': 'text',
-        'rettype': 'abstract',
-        'tool': 'AdvocaiAgent',
-        'api_key': PUBMED_API_KEY
+    if not query or len(query.strip()) < 6:
+        return []
+
+    params_esearch = {
+        "db": "pubmed",
+        "term": query,
+        "retmode": "json",
+        "retmax": max_results,
+        "usehistory": "y",
+        "tool": "AdvocaiAgent",
+        "api_key": PUBMED_API_KEY,
     }
 
-    retrieve_response = requests.get(f"{PUBMED_BASE_URL}efetch.fcgi", params=retrieve_params)
-    
-    return [{"query": query, "raw_abstracts": retrieve_response.text}]
+    # STEP 1 — Search
+    r = _request_with_retry(f"{PUBMED_BASE_URL}esearch.fcgi", params_esearch)
+    if not r:
+        return []
+
+    try:
+        data = r.json()
+    except Exception:
+        return []
+
+    ids = data.get("esearchresult", {}).get("idlist", [])
+    if not ids:
+        return []
+
+    # STEP 2 — Fetch full abstracts
+    params_efetch = {
+        "db": "pubmed",
+        "id": ",".join(ids),
+        "retmode": "xml",
+        "tool": "AdvocaiAgent",
+        "api_key": PUBMED_API_KEY,
+    }
+
+    r2 = _request_with_retry(f"{PUBMED_BASE_URL}efetch.fcgi", params_efetch)
+    if not r2:
+        return []
+
+    return _parse_efetch_xml(r2.text)
+
+
+# ----------------------------------------------------------------------
+# Allow local CLI testing (optional)
+# ----------------------------------------------------------------------
+if __name__ == "__main__":
+    out = pubmed_search("asymptomatic carotid stenosis clinical trial effectiveness", max_results=2)
+    print(json.dumps(out, indent=2))

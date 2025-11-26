@@ -1,0 +1,7 @@
+{
+  "compliant": false,
+  "violation": "UNPARSABLE_JSON",
+  "argument": "{\n  \"compliant\": false,\n  \"violation\": \"Ambiguous 'experimental' exclusion and failure to cover modern treatment.\",\n  \"argument\": \"The denial based on the 'experimental, unproven' exclusion is likely non-compliant. IRDAI Circular on Plain Language (2",
+  "action": "manual_review_required",
+  "legal_points": []
+}

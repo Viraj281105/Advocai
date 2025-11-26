@@ -1,0 +1,75 @@
+{
+  "generated_at": "2025-11-25T19:03:49.630739Z",
+  "policies": [
+    {
+      "filename": "Aditya_Birla_Activ_Health.pdf",
+      "path": "data\\knowledge\\policies\\Aditya_Birla_Activ_Health.pdf",
+      "url": "https://www.adityabirlacapital.com/healthinsurance/assets/pdf/policy-wording-form.pdf",
+      "insurer": "ADITYA BIRLA",
+      "title": "Activ Health Policy wordings",
+      "author": null,
+      "pages": 77,
+      "sha256": "c9baf8e38cb5b530a81d80aba98db757a3e7c1bb9164e2983096e941ed4d3013",
+      "downloaded_at": "2025-11-25T19:03:52.335478Z"
+    },
+    {
+      "filename": "HDFC_ERGO_Optima_Restore.pdf",
+      "path": "data\\knowledge\\policies\\HDFC_ERGO_Optima_Restore.pdf",
+      "url": "https://algatesinsurance.in/resources/policy-documents/hdfc-ergo/optima-restore-policy-wordings.pdf",
+      "insurer": "HDFC ERGO",
+      "title": "GOLDEN YEARS INSURANCE PLAN",
+      "author": "bhabatosh.mishra",
+      "pages": 45,
+      "sha256": "3e0a9acdbe0ec2a71b01bf39fec1514ef9ab8c440535a675319469f779afb156",
+      "downloaded_at": "2025-11-25T19:03:50.453014Z"
+    },
+    {
+      "filename": "Niva_Bupa_ReAssure_2.0.pdf",
+      "path": "data\\knowledge\\policies\\Niva_Bupa_ReAssure_2.0.pdf",
+      "url": "https://transactions.nivabupa.com/pages/doc/policy_wording/ReAssure-2.0-Policy-Wording.pdf",
+      "insurer": "NIVA BUPA",
+      "title": null,
+      "author": "Karishma Seth",
+      "pages": 36,
+      "sha256": "8b00f5307e46553b955c3e21d0adea417e206a635b936f0623109fbec2f8c1bb",
+      "downloaded_at": "2025-11-25T19:03:51.264279Z"
+    },
+    {
+      "filename": "SBI_General_Arogya_Sanjeevani.pdf",
+      "path": "data\\knowledge\\policies\\SBI_General_Arogya_Sanjeevani.pdf",
+      "url": "https://content.sbigeneral.in/uploads/e14cc6abce7d4f4a8e9d0f1cf6f212e8.pdf",
+      "insurer": "SBI GENERAL",
+      "title": "AROGYA SANJEEVANI SBI GENERAL INS.CO. LTD -MICRO INSURANCE PRODUCT_RETAIL_prospectus",
+      "author": null,
+      "pages": 11,
+      "sha256": "1e03a7bce55b158daefe21ff26a7cdc7621b30dbff43effb8dea98f6cddfdf1c",
+      "downloaded_at": "2025-11-25T19:03:53.139377Z"
+    },
+    {
+      "filename": "Star_Comprehensive_Policy_2024.pdf",
+      "path": "data\\knowledge\\policies\\Star_Comprehensive_Policy_2024.pdf",
+      "url": "https://irdai.gov.in/documents/37343/931203/SHAHLIP22028V072122_HEALTH2050.pdf/70aade12-d528-1155-a8b7-c03d2cfecd15?version=1.1&download=true",
+      "insurer": "STAR HEALTH",
+      "title": "Policy - Star Comprehensive Insurance Policy - V.13.cdr",
+      "author": "Narayanan",
+      "pages": 16,
+      "sha256": "331f20edeaa6784601f7eb2fd8c289d5e3c66d8903ff7319cd5f2053453aea42",
+      "downloaded_at": "2025-11-25T19:03:49.642740Z"
+    },
+    {
+      "filename": "Tata_AIG_Medicare.pdf",
+      "path": "data\\knowledge\\policies\\Tata_AIG_Medicare.pdf",
+      "url": "https://irdai.gov.in/documents/37343/931203/TATHLIP21225V022021_2020-2021.pdf/63626023-5d4a-32f7-2f30-0d58882c191c?version=1.1&download=true",
+      "insurer": "TATA AIG",
+      "title": null,
+      "author": "user",
+      "pages": 16,
+      "sha256": "04c7d2c9587e088974a2dc9563dbd99711ba6aa5425f779e43254405fa2e7369",
+      "downloaded_at": "2025-11-25T19:03:53.943952Z"
+    }
+  ],
+  "statutes": {
+    "path": "data\\knowledge\\statutes.md",
+    "sha256": "598e8fad686cd86ce3bd0122e92249ad4cb1348aafe6aaff71e1ff3b7280e708"
+  }
+}
