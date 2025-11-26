@@ -1,15 +1,15 @@
-# agents/clinician.py (FINAL, ROBUST FIX for SDK Conflict)
+# agents/clinician.py — Production-Ready, Crash-Proof Clinician Agent
 
 from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
-from typing import List, Optional, Any, Dict, Union
+from typing import List, Optional
 import json
 import re
 import logging
 
 from .auditor import StructuredDenial
-from tools.pubmed_search import pubmed_search  # raw function
+from tools.pubmed_search import pubmed_search
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -18,7 +18,7 @@ CLINICIAN_MODEL = "gemini-2.5-flash"
 
 
 # ============================================================
-# 1. Pydantic Models
+# Pydantic Models
 # ============================================================
 class ClinicalEvidence(BaseModel):
     article_title: str
@@ -27,130 +27,139 @@ class ClinicalEvidence(BaseModel):
 
 
 class EvidenceList(BaseModel):
-    root: List[ClinicalEvidence]
+    root: List[ClinicalEvidence] = Field(default_factory=list)
 
 
 # ============================================================
 # Helper Functions
 # ============================================================
-def _clean_json_text(s: str) -> str:
-    if not s:
-        return s
-    s = s.strip()
-    s = re.sub(r"```(?:json)?\s*", "", s)
-    s = s.replace("```", "")
-    return s.strip()
+def _clean_json(text: str) -> str:
+    """Remove backticks, markdown fences, etc."""
+    if not text:
+        return ""
+    t = text.strip()
+    t = re.sub(r"```(?:json)?", "", t).replace("```", "")
+    return t.strip()
 
 
-def _get_clean_search_query(denial_details: StructuredDenial) -> str:
-    reason = denial_details.insurer_reason_snippet.lower()
-    keywords = []
+def _derive_query(denial: StructuredDenial) -> str:
+    """Generate an intelligent default PubMed query."""
+    reason = denial.insurer_reason_snippet.lower()
+    tags = []
 
     if "asymptomatic" in reason:
-        keywords.append("asymptomatic")
+        tags.append("asymptomatic")
 
     if "experimental" in reason or "unproven" in reason:
-        keywords.append("clinical utility established")
+        tags.append("clinical utility established")
 
-    base_query = f"{denial_details.procedure_denied} clinical efficacy"
-
-    if keywords:
-        return f"{base_query} {' '.join(keywords)}"
-
-    return base_query
+    base = f"{denial.procedure_denied} clinical efficacy"
+    return base + " " + " ".join(tags) if tags else base
 
 
 # ============================================================
-# Clinician Agent
+# MAIN AGENT
 # ============================================================
-def run_clinician_agent(client: genai.Client, denial_details: StructuredDenial) -> Optional[EvidenceList]:
+def run_clinician_agent(client: genai.Client, denial_details: StructuredDenial) -> EvidenceList:
     """
-    1. LLM chooses best PubMed search query
-    2. Actual tool executes pubmed_search()     (real API call)
-    3. LLM synthesizes structured JSON EvidenceList
+    SAFETY GUARANTEE:
+      → ALWAYS returns EvidenceList (never None).
+      → Even if PubMed fails or LLM fails.
     """
-    print("\n[Clinician Status] Preparing search query...")
 
-    initial_query = _get_clean_search_query(denial_details)
+    print("\n[Clinician] Preparing initial search query...")
+    initial_query = _derive_query(denial_details)
 
+    # --------------------------------------------------------
+    # STEP 1: Ask Gemini for the best PubMed search query
+    # --------------------------------------------------------
     system_instruction = (
-        "You are the Clinician Agent, a specialized medical researcher.\n"
-        "Goal: Identify peer-reviewed articles showing the procedure is safe, effective, "
-        "clinically validated, and NOT experimental.\n\n"
-        "Instructions:\n"
-        "1. Call the 'pubmed_search' TOOL using the best possible query.\n"
-        "2. After tool output is returned, synthesize results into valid JSON "
-        "following the EvidenceList schema.\n\n"
-        f"Schema:\n{json.dumps(EvidenceList.model_json_schema(), indent=2)}\n"
+        "You are the Clinician Agent. Your job is to identify high-quality "
+        "peer-reviewed evidence that the denied procedure is clinically effective, "
+        "safe, and not experimental.\n\n"
+        "You MUST call the 'pubmed_search' tool with the best search query.\n"
+        "After the tool returns article abstracts, you will synthesize them into "
+        "EvidenceList JSON according to the schema.\n"
     )
 
-    # ============================================================
-    # Step 1 — LLM chooses the PubMed search query
-    # ============================================================
     tool_prompt = f"""
-The denied procedure is: {denial_details.procedure_denied}
-The insurer's stated reason: "{denial_details.insurer_reason_snippet}"
-Suggested baseline query: "{initial_query}"
+Denied Procedure: {denial_details.procedure_denied}
+Insurer Reason: {denial_details.insurer_reason_snippet}
 
-Call the 'pubmed_search' tool now using your optimized final query.
+Baseline query: "{initial_query}"
+
+Call the 'pubmed_search' tool with your final optimized query.
 """
 
-    print(f"[Clinician Status] LLM is reasoning and calling tool with initial query: {initial_query}...")
+    print(f"[Clinician] Asking Gemini to choose a query…")
 
     try:
-        response = client.models.generate_content(
+        llm_first = client.models.generate_content(
             model=CLINICIAN_MODEL,
             contents=[tool_prompt],
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
-                tools=[pubmed_search],
+                tools=[pubmed_search],        # function object
             ),
         )
+        # --------------------------------------------------------
+        # Correct extraction of function call for Gemini SDK
+        # --------------------------------------------------------
+        call = None
+        try:
+            parts = llm_first.candidates[0].content.parts
+            for p in parts:
+                if hasattr(p, "function_call") and p.function_call:
+                    call = p.function_call
+                    break
+        except Exception:
+            call = None
 
-        final_query = initial_query
-        tool_calls = getattr(response, "function_calls", [])
-
-        if tool_calls:
-            call = tool_calls[0]
-            if call.name == "pubmed_search":
-                final_query = call.args.get("query", initial_query)
-            else:
-                print(f"[Clinician Warning] Unexpected tool: {call.name}. Using fallback query.")
+        if call and call.name == "pubmed_search":
+            final_query = call.args.get("query", initial_query)
+            print(f"[Clinician] Gemini selected query: {final_query}")
         else:
-            print("[Clinician Warning] No tool call suggested. Using fallback query.")
+            print("[Clinician] No function_call detected. Falling back to baseline query.")
+            final_query = initial_query
+
 
     except Exception as e:
-        print(f"[Clinician Error] LLM failed before tool stage: {e}")
-        return None
+        print(f"[Clinician ERROR] Failed to generate tool call: {e}")
+        return EvidenceList(root=[])
 
-    # ============================================================
-    # Step 2 — Execute the tool
-    # ============================================================
+    # --------------------------------------------------------
+    # STEP 2: Execute PubMed Tool
+    # --------------------------------------------------------
+    print(f"[Clinician] Executing pubmed_search() with: {final_query}")
+
     try:
-        print(f"[Clinician Status] Executing tool 'pubmed_search' with query: {final_query}")
-        raw_tool_output = pubmed_search(query=final_query)
+        articles = pubmed_search(final_query)
 
-        if not isinstance(raw_tool_output, str) or raw_tool_output.startswith("E"):
-            print("[Clinician Warning] PubMed search returned invalid data.")
-            return None
+        if not isinstance(articles, list):
+            print("[Clinician] PubMed returned invalid type → using empty evidence list.")
+            articles = []
 
     except Exception as e:
-        print(f"[Clinician Error] PubMed tool execution failed: {e}")
-        return None
+        print(f"[Clinician ERROR] PubMed tool crashed: {e}")
+        return EvidenceList(root=[])
 
-    # ============================================================
-    # Step 3 — LLM synthesizes EvidenceList JSON
-    # ============================================================
-    print("[Clinician Status] Tool executed. Sending results back to LLM for synthesis...")
+    # If tool yielded nothing → still proceed with synthesis (LLM may produce helpful summary)
+    if not articles:
+        print("[Clinician] PubMed returned zero articles. Will synthesize empty evidence list.")
 
+    # --------------------------------------------------------
+    # STEP 3: Synthesize structured JSON with Gemini
+    # --------------------------------------------------------
     synthesis_prompt = (
-        "Synthesize the following PubMed abstracts into the EvidenceList JSON format.\n"
-        "The summary_of_finding must clearly state **why this procedure is not experimental**.\n\n"
-        f"TOOL OUTPUT:\n{raw_tool_output}"
+        "Synthesize the PubMed results into the EvidenceList schema.\n"
+        "If no articles are available, return an empty list.\n\n"
+        f"TOOL OUTPUT:\n{json.dumps(articles, indent=2)}"
     )
 
+    print("[Clinician] Sending tool output to Gemini for synthesis…")
+
     try:
-        second = client.models.generate_content(
+        llm_second = client.models.generate_content(
             model=CLINICIAN_MODEL,
             contents=[synthesis_prompt],
             config=types.GenerateContentConfig(
@@ -160,17 +169,18 @@ Call the 'pubmed_search' tool now using your optimized final query.
             ),
         )
 
-        if not hasattr(second, "text") or not second.text:
-            print("[Clinician Error] LLM returned no structured JSON.")
-            return None
+        raw_json = llm_second.text if hasattr(llm_second, "text") else None
+        if not raw_json:
+            print("[Clinician] LLM returned nothing. Using empty evidence list.")
+            return EvidenceList(root=[])
 
-        clean_json = _clean_json_text(second.text)
-        evidence = EvidenceList.model_validate_json(clean_json)
+        clean = _clean_json(raw_json)
+        evidence = EvidenceList.model_validate_json(clean)
 
-        print("[Clinician Success] Clinical Evidence Synthesized.")
+        print(f"[Clinician] Evidence synthesized. Count: {len(evidence.root)}")
         return evidence
 
     except Exception as e:
-        print(f"[Clinician Error] Synthesis failed: {e}")
-        logger.exception("Clinician synthesis failed", exc_info=True)
-        return None
+        print(f"[Clinician ERROR] Synthesis failed: {e}")
+        logger.exception("Clinician synthesis error:")
+        return EvidenceList(root=[])
