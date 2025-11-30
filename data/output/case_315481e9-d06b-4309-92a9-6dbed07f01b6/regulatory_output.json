@@ -1,0 +1,23 @@
+{
+  "compliant": false,
+  "violation": "CO-50",
+  "argument": "Insurer's denial is based on policy ambiguity, but the Contra Proferentem Rule requires interpretation in favor of the policyholder.",
+  "action": "Reverse Denial",
+  "legal_points": [
+    {
+      "statute": "IRDAI Master Circular 2024 (Clause 4.2)",
+      "summary": "After 60 months of coverage, claim cannot be rejected for non-disclosure unless fraud is proven.",
+      "relevance_score": 0.9
+    },
+    {
+      "statute": "IRDAI Circular on Plain Language (2018)",
+      "summary": "Ambiguities in policy terms must be interpreted in favor of the policyholder.",
+      "relevance_score": 1.0
+    },
+    {
+      "statute": "CONTRA PROFERENTEM RULE",
+      "summary": "Policy ambiguities should be interpreted against the insurer.",
+      "relevance_score": 0.8
+    }
+  ]
+}
