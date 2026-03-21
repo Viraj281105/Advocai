@@ -1,10 +1,10 @@
-# orchestrator/main.py — Phase II Orchestrator (Checkpointing + Resume + Postgres, Final Stabilized)
+# orchestrator/main.py — Phase II Orchestrator (Checkpointing + Resume + Postgres + SSE Emit)
 
 import os
 import sys
 import json
 import logging
-from typing import Any, Union
+from typing import Any, Union, Callable
 from dotenv import load_dotenv
 from google import genai
 from pydantic import BaseModel
@@ -46,17 +46,14 @@ def save_json_to_file(obj: Any, path: str) -> bool:
         if parent:
             os.makedirs(parent, exist_ok=True)
 
-        # BaseModel → dict
         if isinstance(obj, BaseModel):
             obj = obj.model_dump()
 
-        # dict or list → JSON file
         if isinstance(obj, (dict, list)):
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(obj, f, indent=2, ensure_ascii=False)
             return True
 
-        # string → could be JSON or raw text
         if isinstance(obj, str):
             try:
                 parsed = json.loads(obj)
@@ -67,7 +64,6 @@ def save_json_to_file(obj: Any, path: str) -> bool:
                     f.write(obj)
             return True
 
-        # Fallback: attempt to jsonify
         with open(path, "w", encoding="utf-8") as f:
             json.dump(str(obj), f, indent=2, ensure_ascii=False)
         return True
@@ -78,22 +74,61 @@ def save_json_to_file(obj: Any, path: str) -> bool:
 
 
 # -------------------------------------------------------------
-# Safe execution wrapper for checkpointed pipeline
+# Extract a small UI snippet from each agent's output
 # -------------------------------------------------------------
-def safe_execute(stage: str, session_id: str, function, *args, **kwargs):
+def _extract_snippet(stage: str, output: Any) -> dict:
+    try:
+        if stage == "auditor":
+            d = output.model_dump() if isinstance(output, BaseModel) else output
+            return {
+                "procedure_denied": d.get("procedure_denied", ""),
+                "denial_code": d.get("denial_code", ""),
+            }
+        if stage == "clinician":
+            d = output.model_dump() if isinstance(output, BaseModel) else output
+            articles = d.get("root", d.get("articles", []))
+            return {"article_count": len(articles)}
+        if stage == "regulatory":
+            d = output if isinstance(output, dict) else {}
+            points = d.get("legal_points", [])
+            return {
+                "statute_count": len(points),
+                "top_statute": points[0].get("statute", "") if points else "",
+            }
+        if stage == "barrister":
+            text = output if isinstance(output, str) else str(output)
+            return {"preview": text[:120] + "..." if len(text) > 120 else text}
+        if stage == "judge":
+            d = output.model_dump() if isinstance(output, BaseModel) else output
+            return {
+                "score": d.get("clinical_alignment", 0),
+                "recommendation": d.get("recommendation", ""),
+            }
+    except Exception:
+        pass
+    return {}
+
+
+# -------------------------------------------------------------
+# Safe execution wrapper — now accepts emit callback
+# -------------------------------------------------------------
+def safe_execute(stage: str, session_id: str, function, *args, emit: Callable[[dict], None] = lambda e: None, **kwargs):
     """
-    Wrapper that ensures:
-    - checkpoint resume
-    - saving JSON + raw text depending on output type
-    - consistent logging
+    Wrapper that ensures checkpoint resume, saving, and SSE event emission.
     """
+    import time
 
     # Already executed? Load checkpoint.
     if SessionManager.should_skip_stage(session_id, stage):
         logger.info(f"[{stage.upper()}] Skipped — checkpoint already exists.")
-        return SessionManager.load_checkpoint(session_id, stage)
+        output = SessionManager.load_checkpoint(session_id, stage)
+        # Still emit done so the frontend shows it as complete
+        emit({"type": "agent_done", "agent": stage, "elapsed_ms": 0, "output": _extract_snippet(stage, output)})
+        return output
 
     logger.info(f"[{stage.upper()}] Starting...")
+    emit({"type": "agent_start", "agent": stage})
+    t0 = time.time()
 
     try:
         output = function(*args, **kwargs)
@@ -101,7 +136,6 @@ def safe_execute(stage: str, session_id: str, function, *args, **kwargs):
         if output is None or output == "":
             raise RuntimeError(f"{stage} returned no output.")
 
-        # Determine checkpoint payloads
         if isinstance(output, dict):
             checkpoint_json = output
             raw_text = None
@@ -115,7 +149,6 @@ def safe_execute(stage: str, session_id: str, function, *args, **kwargs):
             checkpoint_json = {"value": str(output)}
             raw_text = str(output)
 
-        # Save checkpoint to Postgres
         SessionManager.save_checkpoint(
             session_id=session_id,
             stage=stage,
@@ -123,19 +156,34 @@ def safe_execute(stage: str, session_id: str, function, *args, **kwargs):
             raw_text=raw_text
         )
 
+        elapsed = int((time.time() - t0) * 1000)
+        emit({
+            "type": "agent_done",
+            "agent": stage,
+            "elapsed_ms": elapsed,
+            "output": _extract_snippet(stage, output),
+        })
+
         logger.info(f"[{stage.upper()}] Success — checkpoint saved.")
         return output
 
     except Exception as e:
         logger.exception(f"[{stage.upper()}] FAILED.")
+        emit({"type": "agent_error", "agent": stage, "message": str(e)})
         SessionManager.mark_failure(session_id, stage, str(e), error_type=type(e).__name__)
         raise e
 
 
 # -------------------------------------------------------------
-# MAIN ORCHESTRATOR
+# MAIN ORCHESTRATOR — now accepts emit callback
 # -------------------------------------------------------------
-def orchestrate_advocai_workflow(client: genai.Client, denial_path: str, policy_path: str, case_id: str):
+def orchestrate_advocai_workflow(
+    client: genai.Client,
+    denial_path: str,
+    policy_path: str,
+    case_id: str,
+    emit: Callable[[dict], None] = lambda e: None,   # ← NEW
+):
 
     logger.info("=== AdvocAI Phase II Workflow Initiated ===")
 
@@ -150,12 +198,12 @@ def orchestrate_advocai_workflow(client: genai.Client, denial_path: str, policy_
     # STEP 1 — Auditor
     # ---------------------------------------------------------
     structured_denial: StructuredDenial = safe_execute(
-        "auditor",
-        session_id,
+        "auditor", session_id,
         run_auditor_agent,
         client=client,
         denial_path=denial_path,
-        policy_path=policy_path
+        policy_path=policy_path,
+        emit=emit,
     )
     save_json_to_file(structured_denial, os.path.join(case_output_dir, "auditor_output.json"))
 
@@ -163,11 +211,11 @@ def orchestrate_advocai_workflow(client: genai.Client, denial_path: str, policy_
     # STEP 2 — Clinician
     # ---------------------------------------------------------
     clinical_evidence: EvidenceList = safe_execute(
-        "clinician",
-        session_id,
+        "clinician", session_id,
         run_clinician_agent,
         client=client,
-        denial_details=structured_denial
+        denial_details=structured_denial,
+        emit=emit,
     )
     save_json_to_file(clinical_evidence, os.path.join(case_output_dir, "clinician_output.json"))
 
@@ -175,11 +223,11 @@ def orchestrate_advocai_workflow(client: genai.Client, denial_path: str, policy_
     # STEP 3 — Regulatory
     # ---------------------------------------------------------
     regulatory_result = safe_execute(
-        "regulatory",
-        session_id,
+        "regulatory", session_id,
         run_regulatory_agent,
         structured_denial_output=structured_denial,
-        session_dir=case_output_dir
+        session_dir=case_output_dir,
+        emit=emit,
     )
     save_json_to_file(regulatory_result, os.path.join(case_output_dir, "regulatory_output.json"))
 
@@ -187,13 +235,13 @@ def orchestrate_advocai_workflow(client: genai.Client, denial_path: str, policy_
     # STEP 4 — Barrister
     # ---------------------------------------------------------
     final_appeal_text = safe_execute(
-        "barrister",
-        session_id,
+        "barrister", session_id,
         run_barrister_agent,
         client=client,
         denial_details=structured_denial,
         clinical_evidence=clinical_evidence,
-        regulatory_evidence=regulatory_result
+        regulatory_evidence=regulatory_result,
+        emit=emit,
     )
     save_json_to_file(final_appeal_text, os.path.join(case_output_dir, "barrister_output.txt"))
 
@@ -204,18 +252,26 @@ def orchestrate_advocai_workflow(client: genai.Client, denial_path: str, policy_
     # STEP 5 — Judge
     # ---------------------------------------------------------
     scorecard = safe_execute(
-        "judge",
-        session_id,
+        "judge", session_id,
         run_judge_agent,
-        session_dir=case_output_dir
+        session_dir=case_output_dir,
+        emit=emit,
     )
     save_json_to_file(scorecard.model_dump(), os.path.join(case_output_dir, "judge_scorecard.json"))
 
     logger.info("=== AdvocAI Phase II Workflow Complete ===")
 
+    return {
+        "auditor": structured_denial.model_dump() if isinstance(structured_denial, BaseModel) else structured_denial,
+        "clinician": clinical_evidence.model_dump() if isinstance(clinical_evidence, BaseModel) else clinical_evidence,
+        "regulatory": regulatory_result,
+        "barrister": final_appeal_text,
+        "judge": scorecard.model_dump() if isinstance(scorecard, BaseModel) else scorecard,
+    }
+
 
 # -------------------------------------------------------------
-# CLI Entrypoint
+# CLI Entrypoint — unchanged
 # -------------------------------------------------------------
 if __name__ == "__main__":
     client = initialize_gemini_client()

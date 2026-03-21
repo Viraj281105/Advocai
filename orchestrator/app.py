@@ -1,140 +1,213 @@
-# orchestrator/app.py — Phase II AdvocAI API Server (FIXED + ASYNC-SAFE)
+"""
+orchestrator/app.py  —  Full file with SSE streaming added
+Drop this in as a replacement for your existing orchestrator/app.py
+"""
 
+import asyncio
+import json
 import os
 import uuid
-import asyncio
-import logging
-from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.responses import JSONResponse
+from pathlib import Path
+from typing import AsyncGenerator
 
-from storage.session_manager import SessionManager
-from orchestrator.main import orchestrate_advocai_workflow, initialize_gemini_client
+from fastapi import FastAPI, File, Form, UploadFile, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse, FileResponse
 
-logger = logging.getLogger("AdvocaiAPI")
-app = FastAPI(title="AdvocAI Orchestrator API", version="2.0")
+# ── Import your existing orchestrator ──────────────────────────────────────
+# Adjust this import path to match your actual module structure
+from orchestrator.main import run_pipeline  # noqa: E402
 
-# Initialize Gemini once
-client = initialize_gemini_client()
+app = FastAPI(title="AdvocAI API", version="1.0.0")
+
+# ── CORS — allow the Next.js dev server ────────────────────────────────────
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ── In-memory session store (replace with DB for production) ───────────────
+# Structure: { session_id: { "status": ..., "events": [...], "result": ... } }
+SESSIONS: dict = {}
 
 
-# ================================================================
-# Utility: Run sync orchestrator in thread executor
-# ================================================================
-def run_workflow_in_background(client, denial_path, policy_path, case_id):
-    loop = asyncio.get_event_loop()
-    # Run CPU/network-heavy orchestrator in a background thread
-    loop.run_in_executor(
-        None,
-        orchestrate_advocai_workflow,
-        client,
-        denial_path,
-        policy_path,
-        case_id
+# ══════════════════════════════════════════════════════════════════════════
+#  POST /api/submit  —  Accept PDFs + case details, kick off pipeline
+# ══════════════════════════════════════════════════════════════════════════
+@app.post("/api/submit")
+async def submit_case(
+    denial_pdf: UploadFile = File(...),
+    policy_pdf: UploadFile = File(...),
+    patient_name: str = Form(...),
+    insurer_name: str = Form(...),
+    procedure_denied: str = Form(...),
+    denial_date: str = Form(""),
+    notes: str = Form(""),
+):
+    session_id = f"case_{uuid.uuid4().hex[:12]}"
+
+    # Save uploaded PDFs to a temp session folder
+    session_dir = Path(f"sessions/{session_id}")
+    session_dir.mkdir(parents=True, exist_ok=True)
+
+    denial_path = session_dir / "denial.pdf"
+    policy_path = session_dir / "policy.pdf"
+
+    denial_path.write_bytes(await denial_pdf.read())
+    policy_path.write_bytes(await policy_pdf.read())
+
+    # Store session metadata
+    SESSIONS[session_id] = {
+        "status": "queued",
+        "events": [],
+        "result": None,
+        "meta": {
+            "patient_name": patient_name,
+            "insurer_name": insurer_name,
+            "procedure_denied": procedure_denied,
+            "denial_date": denial_date,
+            "notes": notes,
+            "denial_path": str(denial_path),
+            "policy_path": str(policy_path),
+        },
+    }
+
+    # Start the pipeline in the background
+    asyncio.create_task(_run_pipeline_task(session_id))
+
+    return {"session_id": session_id, "status": "queued"}
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  Background task — runs the 5-agent pipeline, appends SSE events
+# ══════════════════════════════════════════════════════════════════════════
+async def _run_pipeline_task(session_id: str):
+    session = SESSIONS[session_id]
+    session["status"] = "running"
+
+    def emit(event: dict):
+        """Append an event to the session's event queue."""
+        session["events"].append(event)
+
+    try:
+        meta = session["meta"]
+
+        # Run the pipeline. run_pipeline must accept an emit callback
+        # so each agent can fire stage events.
+        result = await asyncio.to_thread(
+            run_pipeline,
+            denial_path=meta["denial_path"],
+            policy_path=meta["policy_path"],
+            case_id=session_id,
+            emit=emit,           # <-- pass this into your orchestrator
+        )
+
+        session["result"] = result
+        session["status"] = "done"
+        emit({"type": "pipeline_done", "session_id": session_id})
+
+    except Exception as e:
+        session["status"] = "error"
+        emit({"type": "error", "message": str(e)})
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  GET /api/case/{session_id}/stream  —  SSE endpoint
+#  Frontend connects here with EventSource and receives live agent events
+# ══════════════════════════════════════════════════════════════════════════
+@app.get("/api/case/{session_id}/stream")
+async def stream_case(session_id: str):
+    if session_id not in SESSIONS:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    async def event_generator() -> AsyncGenerator[str, None]:
+        session = SESSIONS[session_id]
+        sent_index = 0          # track which events we've already sent
+        max_wait = 120          # give up after 2 minutes of silence
+
+        for _ in range(max_wait * 10):   # poll every 100ms
+            events = session["events"]
+
+            # Send any new events
+            while sent_index < len(events):
+                event = events[sent_index]
+                sent_index += 1
+                # SSE format: "data: {json}\n\n"
+                yield f"data: {json.dumps(event)}\n\n"
+
+            # Pipeline finished — send a final event and close
+            if session["status"] in ("done", "error"):
+                yield f"data: {json.dumps({'type': 'close'})}\n\n"
+                return
+
+            await asyncio.sleep(0.1)
+
+        # Timeout
+        yield f"data: {json.dumps({'type': 'timeout'})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",        # disable nginx buffering
+            "Connection": "keep-alive",
+        },
     )
 
 
-# ================================================================
-# 1. START NEW WORKFLOW
-# ================================================================
-@app.post("/start")
-async def start_workflow(
-    denial: UploadFile = File(...),
-    policy: UploadFile = File(...)
-):
-    """
-    Start a new AdvocAI workflow.
-    Accepts denial.pdf and policy.pdf.
-    """
-
-    # Create session
-    session_id = SessionManager.start_new_session()
-    case_id = f"case_{session_id}"
-
-    case_input_dir = f"data/input/{case_id}"
-    os.makedirs(case_input_dir, exist_ok=True)
-
-    denial_path = f"{case_input_dir}/denial.pdf"
-    policy_path = f"{case_input_dir}/policy.pdf"
-
-    # Save uploaded PDFs
-    try:
-        with open(denial_path, "wb") as f:
-            f.write(await denial.read())
-
-        with open(policy_path, "wb") as f:
-            f.write(await policy.read())
-    except Exception as e:
-        raise HTTPException(500, f"Failed to save uploaded files: {e}")
-
-    # Launch workflow in background thread
-    run_workflow_in_background(client, denial_path, policy_path, case_id)
-
+# ══════════════════════════════════════════════════════════════════════════
+#  GET /api/case/{session_id}/status  —  Simple polling fallback
+# ══════════════════════════════════════════════════════════════════════════
+@app.get("/api/case/{session_id}/status")
+async def get_status(session_id: str):
+    if session_id not in SESSIONS:
+        raise HTTPException(status_code=404, detail="Session not found")
+    session = SESSIONS[session_id]
     return {
         "session_id": session_id,
-        "case_id": case_id,
-        "status": "PROCESSING",
+        "status": session["status"],
+        "events": session["events"],
     }
 
 
-# ================================================================
-# 2. STATUS
-# ================================================================
-@app.get("/status/{session_id}")
-def get_status(session_id: str):
-    stage = SessionManager.get_resume_stage(session_id)
-
-    if stage is None:
-        raise HTTPException(404, "Session not found")
-
-    return {
-        "session_id": session_id,
-        "last_completed_stage": stage,
-        "is_resumable": stage is not None
-    }
+# ══════════════════════════════════════════════════════════════════════════
+#  GET /api/case/{session_id}/result  —  Full pipeline output
+# ══════════════════════════════════════════════════════════════════════════
+@app.get("/api/case/{session_id}/result")
+async def get_result(session_id: str):
+    if session_id not in SESSIONS:
+        raise HTTPException(status_code=404, detail="Session not found")
+    session = SESSIONS[session_id]
+    if session["status"] != "done":
+        raise HTTPException(status_code=202, detail="Pipeline still running")
+    return session["result"]
 
 
-# ================================================================
-# 3. RESUME WORKFLOW
-# ================================================================
-@app.post("/resume/{session_id}")
-async def resume_workflow(session_id: str):
-    """
-    Resume a previously crashed/stopped workflow.
-    """
-
-    last_stage = SessionManager.get_resume_stage(session_id)
-    if last_stage is None:
-        raise HTTPException(404, "Session not found or no checkpoints")
-
-    case_id = f"case_{session_id}"
-    denial_path = f"data/input/{case_id}/denial.pdf"
-    policy_path = f"data/input/{case_id}/policy.pdf"
-
-    if not os.path.exists(denial_path) or not os.path.exists(policy_path):
-        raise HTTPException(400, "Missing denial.pdf or policy.pdf for this session")
-
-    # Continue workflow from next stage
-    run_workflow_in_background(client, denial_path, policy_path, case_id)
-
-    return {
-        "session_id": session_id,
-        "resume_from_stage": last_stage,
-        "status": "RESUMING"
-    }
+# ══════════════════════════════════════════════════════════════════════════
+#  GET /api/case/{session_id}/download  —  Download compiled PDF packet
+# ══════════════════════════════════════════════════════════════════════════
+@app.get("/api/case/{session_id}/download")
+async def download_packet(session_id: str):
+    pdf_path = Path(f"sessions/{session_id}/appeal_packet.pdf")
+    if not pdf_path.exists():
+        raise HTTPException(status_code=404, detail="PDF not yet generated")
+    return FileResponse(
+        path=str(pdf_path),
+        media_type="application/pdf",
+        filename=f"appeal_{session_id}.pdf",
+    )
 
 
-# ================================================================
-# 4. GET RESULT FILES
-# ================================================================
-@app.get("/result/{session_id}")
-def get_result(session_id: str):
-    case_id = f"case_{session_id}"
-    out_dir = f"data/output/{case_id}"
-
-    if not os.path.exists(out_dir):
-        raise HTTPException(404, "Results not generated yet.")
-
-    return {
-        "session_id": session_id,
-        "files": os.listdir(out_dir)
-    }
+# ══════════════════════════════════════════════════════════════════════════
+#  Health check
+# ══════════════════════════════════════════════════════════════════════════
+@app.get("/health")
+async def health():
+    return {"status": "ok", "sessions": len(SESSIONS)}
