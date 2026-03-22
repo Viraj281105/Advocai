@@ -16,7 +16,7 @@ from fastapi.responses import StreamingResponse, FileResponse
 
 # ── Import your existing orchestrator ──────────────────────────────────────
 # Adjust this import path to match your actual module structure
-from orchestrator.main import run_pipeline  # noqa: E402
+from orchestrator.main import orchestrate_advocai_workflow, initialize_gemini_client  # noqa: E402
 
 app = FastAPI(title="AdvocAI API", version="1.0.0")
 
