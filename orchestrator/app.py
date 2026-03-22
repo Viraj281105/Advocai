@@ -98,24 +98,33 @@ async def _run_pipeline_task(session_id: str):
     try:
         meta = session["meta"]
 
-        # Run the pipeline. run_pipeline must accept an emit callback
-        # so each agent can fire stage events.
         result = await asyncio.to_thread(
-            run_pipeline,
+            orchestrate_advocai_workflow,
+            client=initialize_gemini_client(),
             denial_path=meta["denial_path"],
             policy_path=meta["policy_path"],
             case_id=session_id,
-            emit=emit,           # <-- pass this into your orchestrator
+            emit=emit,
         )
 
         session["result"] = result
         session["status"] = "done"
+
+        # Compile PDF packet
+        from tools.pdf_compiler import compile_appeal_packet
+        try:
+            compile_appeal_packet(
+                case_dir=f"data/output/{session_id}",
+                output_path=f"sessions/{session_id}/appeal_packet.pdf"
+            )
+        except Exception as pdf_err:
+            logger.warning(f"PDF compile failed: {pdf_err}")
+
         emit({"type": "pipeline_done", "session_id": session_id})
 
     except Exception as e:
         session["status"] = "error"
         emit({"type": "error", "message": str(e)})
-
 
 # ══════════════════════════════════════════════════════════════════════════
 #  GET /api/case/{session_id}/stream  —  SSE endpoint
