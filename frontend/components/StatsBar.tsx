@@ -34,7 +34,7 @@ function AnimatedNumber({ target, suffix }: { target: number; suffix: string }) 
 
 export default function StatsBar() {
   return (
-    <section id="impact" style={{ position: "relative", padding: "6rem 1.5rem" }}>
+    <section id="impact" style={{ position: "relative", padding: "clamp(3rem, 8vw, 6rem) 1.25rem" }}>
       <div className="divider" style={{ marginBottom: "6rem" }} />
       <div style={{ maxWidth: "1280px", margin: "0 auto" }}>
         <p style={{ textAlign: "center", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.15em", color: "var(--purple-400)", fontWeight: 500, marginBottom: "4rem" }}>

@@ -91,6 +91,13 @@ body::before {
   animation: blink 1s step-end infinite;
 }
 
+@media (max-width: 640px) {
+  .hide-mobile { display: none !important; }
+}
+@media (min-width: 641px) {
+  .show-mobile-only { display: none !important; }
+}
+
 .agent-card-auditor    { --agent-color: #8b6fe8; }
 .agent-card-clinician  { --agent-color: #34d399; }
 .agent-card-regulatory { --agent-color: #fbbf24; }

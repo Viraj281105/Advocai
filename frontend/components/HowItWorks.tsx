@@ -9,7 +9,7 @@ const STEPS = [
 
 export default function HowItWorks() {
   return (
-    <section id="how-it-works" style={{ position: "relative", padding: "6rem 1.5rem" }}>
+    <section id="how-it-works" style={{ position: "relative", padding: "clamp(3rem, 8vw, 6rem) 1.25rem" }}>
       <div className="orb orb-3" />
       <div style={{ maxWidth: "1280px", margin: "0 auto" }}>
         <div style={{ textAlign: "center", marginBottom: "5rem" }}>

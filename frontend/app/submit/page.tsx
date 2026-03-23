@@ -15,7 +15,7 @@ const EMPTY_DETAILS: CaseDetails = {
 type FormErrors = Partial<Record<keyof CaseDetails, string>>;
 
 const STEP_TITLES = [
-  { title: "Upload your denial letter",  sub: "Drop in the PDF your insurer sent you." },
+  { title: "Upload your denial letter",   sub: "Drop in the PDF your insurer sent you." },
   { title: "Upload your policy document", sub: "The insurance policy PDF for your plan." },
   { title: "Tell us about your case",     sub: "A few details so our agents can tailor the appeal." },
   { title: "Review and submit",           sub: "Double-check everything before the agents go to work." },
@@ -77,98 +77,67 @@ export default function SubmitPage() {
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "var(--purple-950)", position: "relative" }}>
-      {/* Background orbs */}
       <div className="orb orb-1" style={{ position: "fixed", opacity: 0.5 }} />
       <div className="orb orb-2" style={{ position: "fixed", opacity: 0.4 }} />
 
       {/* Header */}
-      <header style={{ position: "relative", zIndex: 10, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "1.25rem 2rem", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+      <header style={{ position: "relative", zIndex: 10, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "1.25rem 1.5rem", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
         <Link href="/" style={{ display: "flex", alignItems: "center", gap: "0.5rem", textDecoration: "none" }}>
           <div style={{ width: "1.75rem", height: "1.75rem", borderRadius: "0.5rem", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, #4f31b8, #8b6fe8)" }}>
             <Scale size={14} color="white" />
           </div>
           <span style={{ fontFamily: "var(--font-display)", fontSize: "1.1rem", color: "var(--cream)" }}>
-            Advo<span className="gold-text">AI</span>
+            Advoc<span className="gold-text">AI</span>
           </span>
         </Link>
         <span style={{ fontSize: "0.8rem", color: "rgba(250,248,242,0.3)" }}>Step {step} of 4</span>
       </header>
 
       {/* Main */}
-      <main style={{ position: "relative", zIndex: 10, flex: 1, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "3rem 1.5rem 4rem" }}>
+      <main style={{ position: "relative", zIndex: 10, flex: 1, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "clamp(1.5rem, 5vw, 3rem) 1rem 4rem" }}>
         <div style={{ width: "100%", maxWidth: "680px" }}>
-
-          {/* Step indicator */}
           <StepIndicator currentStep={step} />
 
           {/* Card */}
-          <div style={{
-            borderRadius: "1.5rem",
-            padding: "2.5rem",
-            background: "rgba(255,255,255,0.025)",
-            border: "1px solid rgba(255,255,255,0.07)",
-            backdropFilter: "blur(12px)",
-          }}>
-            {/* Title */}
-            <div style={{ marginBottom: "2rem" }}>
-              <h1 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(1.6rem, 4vw, 2.2rem)", lineHeight: 1.15, letterSpacing: "-0.01em", marginBottom: "0.5rem", color: "var(--cream)" }}>
+          <div style={{ borderRadius: "1.5rem", padding: "clamp(1.25rem, 5vw, 2.5rem)", background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.07)", backdropFilter: "blur(12px)" }}>
+            <div style={{ marginBottom: "1.5rem" }}>
+              <h1 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(1.4rem, 4vw, 2.2rem)", lineHeight: 1.15, letterSpacing: "-0.01em", marginBottom: "0.5rem", color: "var(--cream)" }}>
                 {title}
               </h1>
-              <p style={{ fontSize: "0.9rem", color: "rgba(250,248,242,0.45)" }}>{sub}</p>
+              <p style={{ fontSize: "0.875rem", color: "rgba(250,248,242,0.45)" }}>{sub}</p>
             </div>
 
-            {/* Step content */}
-            <div style={{ marginBottom: "2rem" }}>
-              {step === 1 && (
-                <FileDropzone
-                  label="Drag & drop your denial letter"
-                  description="The letter your insurance company sent denying your claim"
-                  file={denialFile}
-                  onFile={setDenialFile}
-                />
-              )}
-              {step === 2 && (
-                <FileDropzone
-                  label="Drag & drop your policy document"
-                  description="Your insurance plan's policy PDF — usually from your insurer's member portal"
-                  file={policyFile}
-                  onFile={setPolicyFile}
-                />
-              )}
-              {step === 3 && (
-                <CaseDetailsForm values={details} onChange={setDetails} errors={errors} />
-              )}
-              {step === 4 && (
-                <ReviewPanel denialFile={denialFile} policyFile={policyFile} details={details} />
-              )}
+            <div style={{ marginBottom: "1.5rem" }}>
+              {step === 1 && <FileDropzone label="Drag & drop your denial letter" description="The letter your insurance company sent denying your claim" file={denialFile} onFile={setDenialFile} />}
+              {step === 2 && <FileDropzone label="Drag & drop your policy document" description="Your insurance plan's policy PDF — usually from your insurer's member portal" file={policyFile} onFile={setPolicyFile} />}
+              {step === 3 && <CaseDetailsForm values={details} onChange={setDetails} errors={errors} />}
+              {step === 4 && <ReviewPanel denialFile={denialFile} policyFile={policyFile} details={details} />}
             </div>
 
             {/* Navigation */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", paddingTop: "1.5rem", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", paddingTop: "1.25rem", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
               {step > 1 ? (
-                <button onClick={back} className="btn-secondary" style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", padding: "0.75rem 1.5rem", borderRadius: "9999px", fontSize: "0.875rem", fontWeight: 500, color: "rgba(250,248,242,0.6)", cursor: "pointer" }}>
+                <button onClick={back} className="btn-secondary" style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", padding: "0.75rem 1.25rem", borderRadius: "9999px", fontSize: "0.875rem", fontWeight: 500, color: "rgba(250,248,242,0.6)", cursor: "pointer" }}>
                   <ArrowLeft size={15} /> Back
                 </button>
               ) : (
-                <Link href="/" className="btn-secondary" style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", padding: "0.75rem 1.5rem", borderRadius: "9999px", fontSize: "0.875rem", fontWeight: 500, color: "rgba(250,248,242,0.6)", textDecoration: "none" }}>
+                <Link href="/" className="btn-secondary" style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", padding: "0.75rem 1.25rem", borderRadius: "9999px", fontSize: "0.875rem", fontWeight: 500, color: "rgba(250,248,242,0.6)", textDecoration: "none" }}>
                   <ArrowLeft size={15} /> Home
                 </Link>
               )}
-
               {step < 4 ? (
-                <button onClick={next} className="btn-primary" style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", padding: "0.75rem 1.75rem", borderRadius: "9999px", fontSize: "0.875rem", fontWeight: 500, color: "white", cursor: "pointer" }}>
-                  <span>Continue</span> <ArrowRight size={15} />
+                <button onClick={next} className="btn-primary" style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", padding: "0.75rem 1.5rem", borderRadius: "9999px", fontSize: "0.875rem", fontWeight: 500, color: "white", cursor: "pointer" }}>
+                  <span>Continue</span><ArrowRight size={15} />
                 </button>
               ) : (
-                <button onClick={submit} disabled={submitting} className="btn-primary" style={{ display: "inline-flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem 2rem", borderRadius: "9999px", fontSize: "0.875rem", fontWeight: 500, color: "white", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1 }}>
-                  {submitting ? (<><Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /><span>Launching agents...</span></>) : (<><span>Submit appeal</span><ArrowRight size={15} /></>)}
+                <button onClick={submit} disabled={submitting} className="btn-primary" style={{ display: "inline-flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem 1.75rem", borderRadius: "9999px", fontSize: "0.875rem", fontWeight: 500, color: "white", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1 }}>
+                  {submitting ? <><Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /><span>Launching agents...</span></> : <><span>Submit appeal</span><ArrowRight size={15} /></>}
                 </button>
               )}
             </div>
           </div>
 
-          {/* Privacy note */}
-          <p style={{ textAlign: "center", fontSize: "0.75rem", marginTop: "1.5rem", color: "rgba(250,248,242,0.2)" }}>
+          <p style={{ textAlign: "center", fontSize: "0.75rem", marginTop: "1.25rem", color: "rgba(250,248,242,0.2)" }}>
             Your files are processed locally and never stored. MIT licensed · Open source.
           </p>
         </div>

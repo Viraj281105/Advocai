@@ -28,7 +28,7 @@ export default function AgentCards() {
         </div>
 
         {/* Grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "1.25rem" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))", gap: "1rem", }}>
           {AGENTS.map((agent) => {
             const Icon = agent.icon;
             return (
