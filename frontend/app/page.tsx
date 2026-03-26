@@ -5,6 +5,7 @@ import HowItWorks from "@/components/HowItWorks";
 import AgentCards from "@/components/AgentCards";
 import CTASection from "@/components/CTASection";
 import Footer from "@/components/Footer";
+import PipelineDiagram from "@/components/PipelineDiagram";
 
 export default function Home() {
   return (
@@ -14,6 +15,7 @@ export default function Home() {
       <StatsBar />
       <HowItWorks />
       <AgentCards />
+      <PipelineDiagram />
       <CTASection />
       <Footer />
     </main>

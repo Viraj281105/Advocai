@@ -1,28 +1,34 @@
 """
-orchestrator/app.py  —  Full file with SSE streaming added
-Drop this in as a replacement for your existing orchestrator/app.py
+orchestrator/app.py
 """
 
 import asyncio
 import json
 import os
 import uuid
+
+from dotenv import load_dotenv
 from pathlib import Path
-from typing import AsyncGenerator
-from auth import router as auth_router, ensure_users_table
-from fastapi import FastAPI, File, Form, UploadFile, HTTPException
+
+env_path = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(dotenv_path=env_path)
+
+from pathlib import Path
+from typing import Annotated, AsyncGenerator
+
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
-# ── Add these imports at the top of app.py ────────────────────────────────────
-from typing import Annotated
-from fastapi import Depends
-from auth import get_current_user
-from auth.db import UserRecord
+# Auth — relative imports since auth/ lives inside orchestrator/
+from .auth import router as auth_router, ensure_users_table
+from .auth.router import get_current_user
+from .auth.db import UserRecord
 
-# ── Import your existing orchestrator ──────────────────────────────────────
-# Adjust this import path to match your actual module structure
-from orchestrator.main import orchestrate_advocai_workflow, initialize_gemini_client  # noqa: E402
+# Main pipeline — relative, NOT orchestrator.main
+from .main import orchestrate_advocai_workflow, initialize_gemini_client
+
+from storage.session_manager import get_cases_for_user, delete_case_for_user
 
 app = FastAPI(title="AdvocAI API", version="1.0.0")
 app.include_router(auth_router)

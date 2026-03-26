@@ -90,7 +90,7 @@ async def get_current_user(
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 async def register(body: RegisterRequest):
-    existing = await get_user_by_email(body.email)
+    existing = get_user_by_email(body.email)
     if existing:
         raise HTTPException(status_code=409, detail="Email already registered")
 
@@ -112,7 +112,7 @@ async def register(body: RegisterRequest):
 
 @router.post("/login", response_model=TokenResponse)
 async def login(body: LoginRequest):
-    user = await get_user_by_email(body.email)
+    user = get_user_by_email(body.email)
     if not user or not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 

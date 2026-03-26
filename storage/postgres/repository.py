@@ -4,6 +4,9 @@ import json
 from psycopg2.extras import Json
 from storage.postgres.connection import PostgresConnection
 
+from dotenv import load_dotenv
+load_dotenv()
+
 
 class Repository:
     """

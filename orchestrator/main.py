@@ -5,7 +5,13 @@ import sys
 import json
 import logging
 from typing import Any, Union, Callable
+
 from dotenv import load_dotenv
+from pathlib import Path
+
+env_path = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(dotenv_path=env_path)
+
 from google import genai
 from pydantic import BaseModel
 

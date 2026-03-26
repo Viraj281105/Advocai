@@ -18,17 +18,16 @@ class PostgresConnection:
 
     @staticmethod
     def initialize():
-        """Initializes the global DB connection pool."""
         if PostgresConnection._pool is None:
             try:
                 PostgresConnection._pool = SimpleConnectionPool(
                     minconn=1,
                     maxconn=10,
-                    host=os.getenv("DB_HOST", "localhost"),
-                    port=os.getenv("DB_PORT", "5432"),
-                    database=os.getenv("DB_NAME"),
-                    user=os.getenv("DB_USER"),
-                    password=os.getenv("DB_PASSWORD"),
+                    host=os.getenv("POSTGRES_HOST", "localhost"),
+                    port=os.getenv("POSTGRES_PORT", "5432"),
+                    database=os.getenv("POSTGRES_DB"),
+                    user=os.getenv("POSTGRES_USER"),
+                    password=os.getenv("POSTGRES_PASSWORD"),
                     connect_timeout=5
                 )
                 print("✅ PostgreSQL connection pool initialized.")

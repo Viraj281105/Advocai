@@ -1,15 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { apiLogin, saveAuth } from "@/lib/auth";
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [form, setForm] = useState({ email: "", password: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // 🔥 Get redirect target (VERY IMPORTANT)
+  const next = searchParams.get("next") || "/dashboard";
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -17,18 +22,30 @@ export default function LoginPage() {
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      const { token, user } = await apiLogin(form.email, form.password);
-      saveAuth(token, user);
-      router.push("/dashboard"); // → Issue #10 case dashboard
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Login failed");
-    } finally {
-      setLoading(false);
-    }
-  };
+  e.preventDefault();
+  console.log("🔥 Submit triggered");
+
+  setLoading(true);
+
+  try {
+    console.log("📡 Calling API...");
+    const { token, user } = await apiLogin(form.email, form.password);
+
+    console.log("✅ Login success:", token, user);
+
+    saveAuth(token, user);
+
+    console.log("🚀 Redirecting...");
+    console.log("🚀 Redirecting to:", next);
+    router.replace(next);
+    router.refresh();
+  } catch (err) {
+    console.error("❌ Login error:", err);
+    setError(err instanceof Error ? err.message : "Login failed");
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <main style={{ minHeight:"100vh", background:"#0f0a1e", display:"flex", alignItems:"center", justifyContent:"center", padding:"24px", position:"relative", overflow:"hidden", fontFamily:"'DM Sans', sans-serif" }}>
@@ -76,14 +93,75 @@ export default function LoginPage() {
           <Link href="/register" style={{ color:"#e8c97a", textDecoration:"none", fontWeight:500 }}>Create one</Link>
         </p>
       </div>
+
       <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500;600&display=swap'); @keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </main>
   );
 }
 
-const labelStyle: React.CSSProperties = { display:"block", fontSize:"0.8125rem", fontWeight:500, color:"rgba(250,248,242,0.6)", marginBottom:"8px", letterSpacing:"0.03em" };
-const inputStyle: React.CSSProperties = { width:"100%", padding:"12px 16px", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:"12px", color:"#faf8f2", fontFamily:"'DM Sans', sans-serif", fontSize:"0.9375rem", outline:"none", transition:"border-color 0.2s, background 0.2s", boxSizing:"border-box" };
-const inputFocusStyle: React.CSSProperties = { ...inputStyle, borderColor:"rgba(139,111,232,0.6)", background:"rgba(79,49,184,0.1)" };
-const btnStyle: React.CSSProperties = { marginTop:"8px", padding:"14px", color:"#faf8f2", border:"none", borderRadius:"12px", fontFamily:"'DM Sans', sans-serif", fontSize:"0.9375rem", fontWeight:600, letterSpacing:"0.02em", transition:"all 0.2s ease", display:"flex", alignItems:"center", justifyContent:"center", gap:"8px" };
-const spinnerStyle: React.CSSProperties = { display:"inline-block", width:"16px", height:"16px", border:"2px solid rgba(255,255,255,0.3)", borderTopColor:"#fff", borderRadius:"50%", animation:"spin 0.7s linear infinite" };
-const errorStyle: React.CSSProperties = { color:"#f87171", fontSize:"0.8125rem", margin:0, padding:"10px 14px", background:"rgba(248,113,113,0.08)", border:"1px solid rgba(248,113,113,0.2)", borderRadius:"10px" };
+
+const labelStyle: React.CSSProperties = {
+  display: "block",
+  fontSize: "0.8125rem",
+  fontWeight: 500,
+  color: "rgba(250,248,242,0.6)",
+  marginBottom: "8px",
+  letterSpacing: "0.03em",
+};
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "12px 16px",
+  background: "rgba(255,255,255,0.05)",
+  border: "1px solid rgba(255,255,255,0.1)",
+  borderRadius: "12px",
+  color: "#faf8f2",
+  fontFamily: "'DM Sans', sans-serif",
+  fontSize: "0.9375rem",
+  outline: "none",
+  transition: "border-color 0.2s, background 0.2s",
+  boxSizing: "border-box",
+};
+
+const inputFocusStyle: React.CSSProperties = {
+  ...inputStyle,
+  borderColor: "rgba(139,111,232,0.6)",
+  background: "rgba(79,49,184,0.1)",
+};
+
+const btnStyle: React.CSSProperties = {
+  marginTop: "8px",
+  padding: "14px",
+  color: "#faf8f2",
+  border: "none",
+  borderRadius: "12px",
+  fontFamily: "'DM Sans', sans-serif",
+  fontSize: "0.9375rem",
+  fontWeight: 600,
+  letterSpacing: "0.02em",
+  transition: "all 0.2s ease",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: "8px",
+};
+
+const spinnerStyle: React.CSSProperties = {
+  display: "inline-block",
+  width: "16px",
+  height: "16px",
+  border: "2px solid rgba(255,255,255,0.3)",
+  borderTopColor: "#fff",
+  borderRadius: "50%",
+  animation: "spin 0.7s linear infinite",
+};
+
+const errorStyle: React.CSSProperties = {
+  color: "#f87171",
+  fontSize: "0.8125rem",
+  margin: 0,
+  padding: "10px 14px",
+  background: "rgba(248,113,113,0.08)",
+  border: "1px solid rgba(248,113,113,0.2)",
+  borderRadius: "10px",
+};
