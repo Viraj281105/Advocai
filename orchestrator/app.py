@@ -9,17 +9,29 @@ import os
 import uuid
 from pathlib import Path
 from typing import AsyncGenerator
-
+from auth import router as auth_router, ensure_users_table
 from fastapi import FastAPI, File, Form, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
+
+# ── Add these imports at the top of app.py ────────────────────────────────────
+from typing import Annotated
+from fastapi import Depends
+from auth import get_current_user
+from auth.db import UserRecord
 
 # ── Import your existing orchestrator ──────────────────────────────────────
 # Adjust this import path to match your actual module structure
 from orchestrator.main import orchestrate_advocai_workflow, initialize_gemini_client  # noqa: E402
 
 app = FastAPI(title="AdvocAI API", version="1.0.0")
+app.include_router(auth_router)
 
+@app.on_event("startup")
+async def startup():
+    ensure_users_table()
+
+    
 # ── CORS — allow the Next.js dev server ────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
@@ -83,6 +95,25 @@ async def submit_case(
 
     return {"session_id": session_id, "status": "queued"}
 
+
+# ── Add these two endpoints anywhere in app.py ────────────────────────────────
+ 
+@app.get("/api/cases")
+async def list_cases(current_user: Annotated[UserRecord, Depends(get_current_user)]):
+    """Return all cases for the authenticated user, newest first."""
+    cases = await get_cases_for_user(str(current_user.id))
+    return {"cases": cases}
+ 
+ 
+@app.delete("/api/case/{session_id}", status_code=204)
+async def delete_case(
+    session_id: str,
+    current_user: Annotated[UserRecord, Depends(get_current_user)],
+):
+    """Delete a case — only the owning user may delete it."""
+    ok = await delete_case_for_user(session_id, str(current_user.id))
+    if not ok:
+        raise HTTPException(status_code=404, detail="Case not found or access denied")
 
 # ══════════════════════════════════════════════════════════════════════════
 #  Background task — runs the 5-agent pipeline, appends SSE events

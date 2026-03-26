@@ -151,3 +151,49 @@ class SessionManager:
                 logger.error(f"Postgres should_skip_stage() failed — fallback: {e}")
 
         return JSONStore.stage_completed(session_id, stage)
+
+async def get_cases_for_user(user_id: str) -> list[dict]:
+    """
+        Query sessions table for rows owned by user_id.
+        Each row should return the shape the CaseCard component expects:
+        {
+        id, patient_name, denial_reason, status,
+        agents: {auditor, clinician, regulatory, barrister, judge},
+        judge_score, appeal_strength, created_at, has_pdf
+        }
+        Adjust SELECT fields to match your actual sessions schema.
+    """
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT
+                    id,
+                    patient_name,
+                    denial_reason,
+                    status,
+                    agent_statuses   AS agents,
+                    judge_score,
+                    appeal_strength,
+                    created_at,
+                    has_pdf
+                FROM sessions
+                WHERE user_id = %s
+                ORDER BY created_at DESC
+                """,
+                (user_id,),
+            )
+            rows = cur.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def delete_case_for_user(session_id: str, user_id: str) -> bool:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM sessions WHERE id = %s AND user_id = %s",
+                (session_id, user_id),
+            )
+            deleted = cur.rowcount
+        conn.commit()
+    return deleted > 0
