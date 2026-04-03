@@ -1,7 +1,5 @@
-# agents/clinician.py — Production-Ready, Crash-Proof Clinician Agent
+# agents/clinician.py — Clinician Agent (Local Ollama)
 
-from google import genai
-from google.genai import types
 from pydantic import BaseModel, Field
 from typing import List, Optional
 import json
@@ -13,8 +11,6 @@ from tools.pubmed_search import pubmed_search
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
-CLINICIAN_MODEL = "gemini-2.5-flash"
 
 
 # ============================================================
@@ -43,144 +39,183 @@ def _clean_json(text: str) -> str:
 
 
 def _derive_query(denial: StructuredDenial) -> str:
-    """Generate an intelligent default PubMed query."""
+    """
+    Generate an optimized PubMed query from denial details.
+    Previously this was done by Gemini via function calling.
+    Now done locally — fast, deterministic, no LLM needed.
+    """
     reason = denial.insurer_reason_snippet.lower()
+    procedure = denial.procedure_denied.strip()
     tags = []
 
     if "asymptomatic" in reason:
         tags.append("asymptomatic")
 
     if "experimental" in reason or "unproven" in reason:
-        tags.append("clinical utility established")
+        tags.append("clinical utility")
 
-    base = f"{denial.procedure_denied} clinical efficacy"
-    return base + " " + " ".join(tags) if tags else base
+    if "not medically necessary" in reason or "medical necessity" in reason:
+        tags.append("medical necessity")
+
+    if "investigational" in reason:
+        tags.append("randomized controlled trial")
+
+    base = f"{procedure} clinical efficacy"
+    return (base + " " + " ".join(tags)).strip() if tags else base
+
+
+def _extract_first_json(text: str) -> Optional[dict]:
+    """Balanced brace extraction for JSON recovery."""
+    if not text:
+        return None
+    start = text.find("{")
+    if start == -1:
+        # maybe it's an array
+        start = text.find("[")
+        if start == -1:
+            return None
+
+    open_char = text[start]
+    close_char = "}" if open_char == "{" else "]"
+    depth = 0
+
+    for i in range(start, len(text)):
+        if text[i] == open_char:
+            depth += 1
+        elif text[i] == close_char:
+            depth -= 1
+            if depth == 0:
+                block = text[start:i + 1]
+                try:
+                    return json.loads(block)
+                except Exception:
+                    cleaned = re.sub(r",\s*([}\]])", r"\1", block)
+                    try:
+                        return json.loads(cleaned)
+                    except Exception:
+                        return None
+    return None
 
 
 # ============================================================
 # MAIN AGENT
 # ============================================================
-def run_clinician_agent(client: genai.Client, denial_details: StructuredDenial) -> EvidenceList:
+def run_clinician_agent(client, denial_details: StructuredDenial) -> EvidenceList:
     """
     SAFETY GUARANTEE:
       → ALWAYS returns EvidenceList (never None).
       → Even if PubMed fails or LLM fails.
+
+    Flow:
+      1. Derive optimized PubMed query locally (no LLM needed)
+      2. Execute PubMed search
+      3. Synthesize results into EvidenceList JSON via Ollama
     """
 
-    print("\n[Clinician] Preparing initial search query...")
-    initial_query = _derive_query(denial_details)
+    # --------------------------------------------------------
+    # STEP 1: Derive PubMed query locally
+    # No LLM call needed here — pure deterministic logic
+    # --------------------------------------------------------
+    final_query = _derive_query(denial_details)
+    logger.info(f"[Clinician] PubMed query: {final_query}")
 
     # --------------------------------------------------------
-    # STEP 1: Ask Gemini for the best PubMed search query
+    # STEP 2: Execute PubMed search
     # --------------------------------------------------------
-    system_instruction = (
-        "You are the Clinician Agent. Your job is to identify high-quality "
-        "peer-reviewed evidence that the denied procedure is clinically effective, "
-        "safe, and not experimental.\n\n"
-        "You MUST call the 'pubmed_search' tool with the best search query.\n"
-        "After the tool returns article abstracts, you will synthesize them into "
-        "EvidenceList JSON according to the schema.\n"
-    )
-
-    tool_prompt = f"""
-Denied Procedure: {denial_details.procedure_denied}
-Insurer Reason: {denial_details.insurer_reason_snippet}
-
-Baseline query: "{initial_query}"
-
-Call the 'pubmed_search' tool with your final optimized query.
-"""
-
-    print(f"[Clinician] Asking Gemini to choose a query…")
-
-    try:
-        llm_first = client.models.generate_content(
-            model=CLINICIAN_MODEL,
-            contents=[tool_prompt],
-            config=types.GenerateContentConfig(
-                system_instruction=system_instruction,
-                tools=[pubmed_search],        # function object
-            ),
-        )
-        # --------------------------------------------------------
-        # Correct extraction of function call for Gemini SDK
-        # --------------------------------------------------------
-        call = None
-        try:
-            parts = llm_first.candidates[0].content.parts
-            for p in parts:
-                if hasattr(p, "function_call") and p.function_call:
-                    call = p.function_call
-                    break
-        except Exception:
-            call = None
-
-        if call and call.name == "pubmed_search":
-            final_query = call.args.get("query", initial_query)
-            print(f"[Clinician] Gemini selected query: {final_query}")
-        else:
-            print("[Clinician] No function_call detected. Falling back to baseline query.")
-            final_query = initial_query
-
-
-    except Exception as e:
-        print(f"[Clinician ERROR] Failed to generate tool call: {e}")
-        return EvidenceList(root=[])
-
-    # --------------------------------------------------------
-    # STEP 2: Execute PubMed Tool
-    # --------------------------------------------------------
-    print(f"[Clinician] Executing pubmed_search() with: {final_query}")
+    logger.info(f"[Clinician] Executing pubmed_search()...")
 
     try:
         articles = pubmed_search(final_query)
-
         if not isinstance(articles, list):
-            print("[Clinician] PubMed returned invalid type → using empty evidence list.")
+            logger.warning("[Clinician] PubMed returned invalid type → empty list.")
             articles = []
-
     except Exception as e:
-        print(f"[Clinician ERROR] PubMed tool crashed: {e}")
+        logger.error(f"[Clinician] PubMed tool crashed: {e}")
         return EvidenceList(root=[])
 
-    # If tool yielded nothing → still proceed with synthesis (LLM may produce helpful summary)
     if not articles:
-        print("[Clinician] PubMed returned zero articles. Will synthesize empty evidence list.")
+        logger.warning("[Clinician] PubMed returned zero articles.")
+        return EvidenceList(root=[])
+
+    logger.info(f"[Clinician] PubMed returned {len(articles)} articles.")
 
     # --------------------------------------------------------
-    # STEP 3: Synthesize structured JSON with Gemini
+    # STEP 3: Synthesize into EvidenceList JSON via Ollama
     # --------------------------------------------------------
-    synthesis_prompt = (
-        "Synthesize the PubMed results into the EvidenceList schema.\n"
-        "If no articles are available, return an empty list.\n\n"
-        f"TOOL OUTPUT:\n{json.dumps(articles, indent=2)}"
+    schema = EvidenceList.model_json_schema()
+
+    sys_instr = (
+        "You are the Clinician Agent.\n"
+        "You will receive PubMed article data and must synthesize it into "
+        "structured JSON matching the schema below.\n"
+        "Output STRICT JSON ONLY. No markdown. No explanation.\n\n"
+        f"Schema:\n{json.dumps(schema, indent=2)}\n\n"
+        "Rules:\n"
+        "- 'root' must be a list of article objects.\n"
+        "- Each object needs: article_title, summary_of_finding, pubmed_id.\n"
+        "- summary_of_finding: 1-2 sentence clinical finding summary.\n"
+        "- If no articles provided, return: {\"root\": []}\n"
+        "- Output ONLY the JSON object. Nothing else."
     )
 
-    print("[Clinician] Sending tool output to Gemini for synthesis…")
+    # Trim articles to avoid overloading context
+    # Each article has title + abstract — keep top 5
+    articles_trimmed = articles[:5]
+
+    # Trim each abstract to 600 chars
+    for art in articles_trimmed:
+        if "abstract" in art and len(art["abstract"]) > 600:
+            art["abstract"] = art["abstract"][:600] + "..."
+
+    prompt = (
+        f"Procedure denied: {denial_details.procedure_denied}\n"
+        f"Denial reason: {denial_details.insurer_reason_snippet}\n\n"
+        "PubMed articles:\n"
+        f"{json.dumps(articles_trimmed, indent=2)}\n\n"
+        "Now output the JSON object matching the schema:"
+    )
+
+    logger.info("[Clinician] Sending articles to Ollama for synthesis...")
+
+    raw = client.generate(
+        prompt=prompt,
+        system=sys_instr,
+        temperature=0.1,
+        max_tokens=1024,
+        json_mode=True,
+    )
+
+    if not raw:
+        logger.error("[Clinician] Ollama returned empty response.")
+        return EvidenceList(root=[])
+
+    logger.debug(f"[Clinician] Raw response: {raw[:300]}")
+
+    # ── Parse response ────────────────────────────────────────────────────
+    clean = _clean_json(raw)
+
+    # Primary parse
+    try:
+        evidence = EvidenceList.model_validate_json(clean)
+        logger.info(f"[Clinician] Evidence synthesized. Count: {len(evidence.root)}")
+        return evidence
+    except Exception:
+        logger.warning("[Clinician] Strict parse failed, attempting recovery.")
+
+    # Recovery parse
+    recovered = _extract_first_json(clean)
+    if not recovered:
+        logger.error("[Clinician] Could not recover JSON.")
+        return EvidenceList(root=[])
+
+    # Handle both {"root": [...]} and plain [...] shapes
+    if isinstance(recovered, list):
+        recovered = {"root": recovered}
 
     try:
-        llm_second = client.models.generate_content(
-            model=CLINICIAN_MODEL,
-            contents=[synthesis_prompt],
-            config=types.GenerateContentConfig(
-                system_instruction=system_instruction,
-                response_mime_type="application/json",
-                response_schema=EvidenceList.model_json_schema(),
-            ),
-        )
-
-        raw_json = llm_second.text if hasattr(llm_second, "text") else None
-        if not raw_json:
-            print("[Clinician] LLM returned nothing. Using empty evidence list.")
-            return EvidenceList(root=[])
-
-        clean = _clean_json(raw_json)
-        evidence = EvidenceList.model_validate_json(clean)
-
-        print(f"[Clinician] Evidence synthesized. Count: {len(evidence.root)}")
+        evidence = EvidenceList.model_validate(recovered)
+        logger.info(f"[Clinician] Recovered. Count: {len(evidence.root)}")
         return evidence
-
     except Exception as e:
-        print(f"[Clinician ERROR] Synthesis failed: {e}")
-        logger.exception("Clinician synthesis error:")
+        logger.error(f"[Clinician] Recovery failed: {e}")
         return EvidenceList(root=[])

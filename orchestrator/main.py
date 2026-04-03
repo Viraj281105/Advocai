@@ -1,9 +1,10 @@
-# orchestrator/main.py — Phase II Orchestrator (Checkpointing + Resume + Postgres + SSE Emit)
+# orchestrator/main.py — Phase II Orchestrator (Ollama Local LLM)
 
 import os
 import sys
 import json
 import logging
+import requests
 from typing import Any, Union, Callable
 
 from dotenv import load_dotenv
@@ -12,7 +13,6 @@ from pathlib import Path
 env_path = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
-from google import genai
 from pydantic import BaseModel
 
 # Agents
@@ -30,17 +30,88 @@ logger = logging.getLogger("AdvocaiOrchestrator")
 
 
 # -------------------------------------------------------------
-# Gemini client init
+# Ollama client — drop-in replacement for genai.Client
 # -------------------------------------------------------------
-def initialize_gemini_client() -> genai.Client | None:
-    load_dotenv()
+class OllamaClient:
+    """
+    Thin wrapper around Ollama's local REST API.
+    Mimics the interface the agents expect so minimal
+    changes are needed downstream.
+    """
+
+    def __init__(self, base_url: str = "http://localhost:11434", model: str = "mistral"):
+        self.base_url = base_url
+        self.model = model
+        self._verify_connection()
+
+    def _verify_connection(self):
+        try:
+            r = requests.get(f"{self.base_url}/api/tags", timeout=5)
+            r.raise_for_status()
+            logger.info(f"Ollama connected at {self.base_url} — model: {self.model}")
+        except Exception as e:
+            logger.fatal(f"Cannot reach Ollama at {self.base_url}: {e}")
+            logger.fatal("Make sure Ollama is running: ollama serve")
+            raise RuntimeError(f"Ollama not reachable: {e}")
+
+    def generate(
+        self,
+        prompt: str,
+        system: str = "",
+        temperature: float = 0.0,
+        max_tokens: int = 2048,
+        json_mode: bool = False,
+    ) -> str:
+        """
+        Call Ollama generate endpoint.
+        Returns raw text string.
+        """
+        payload = {
+            "model": self.model,
+            "prompt": prompt,
+            "system": system,
+            "stream": False,
+            "options": {
+                "temperature": temperature,
+                "num_predict": max_tokens,
+            },
+        }
+
+        if json_mode:
+            payload["format"] = "json"
+
+        try:
+            r = requests.post(
+                f"{self.base_url}/api/generate",
+                json=payload,
+                timeout=120,
+            )
+            r.raise_for_status()
+            return r.json().get("response", "").strip()
+        except Exception as e:
+            logger.error(f"Ollama generate failed: {e}")
+            return ""
+
+
+def initialize_ollama_client() -> OllamaClient:
+    """
+    Initialize and return the Ollama client.
+    Reads OLLAMA_BASE_URL and OLLAMA_MODEL from .env if set,
+    otherwise uses sensible defaults.
+    """
+    base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    model = os.getenv("OLLAMA_MODEL", "mistral")
+
     try:
-        client = genai.Client()
-        logger.info("genai.Client initialized.")
+        client = OllamaClient(base_url=base_url, model=model)
         return client
     except Exception as e:
-        logger.fatal(f"Could not initialize genai client: {e}")
+        logger.fatal(f"Could not initialize Ollama client: {e}")
         return None
+
+
+# Keep old name as alias so app.py import doesn't break yet
+initialize_gemini_client = initialize_ollama_client
 
 
 # -------------------------------------------------------------
@@ -107,8 +178,8 @@ def _extract_snippet(stage: str, output: Any) -> dict:
         if stage == "judge":
             d = output.model_dump() if isinstance(output, BaseModel) else output
             return {
-                "score": d.get("clinical_alignment", 0),
-                "recommendation": d.get("recommendation", ""),
+                "score": d.get("overall_score", 0),
+                "status": d.get("status", ""),
             }
     except Exception:
         pass
@@ -116,20 +187,23 @@ def _extract_snippet(stage: str, output: Any) -> dict:
 
 
 # -------------------------------------------------------------
-# Safe execution wrapper — now accepts emit callback
+# Safe execution wrapper
 # -------------------------------------------------------------
-def safe_execute(stage: str, session_id: str, function, *args, emit: Callable[[dict], None] = lambda e: None, **kwargs):
-    """
-    Wrapper that ensures checkpoint resume, saving, and SSE event emission.
-    """
+def safe_execute(
+    stage: str,
+    session_id: str,
+    function,
+    *args,
+    emit: Callable[[dict], None] = lambda e: None,
+    **kwargs
+):
     import time
 
-    # Already executed? Load checkpoint.
     if SessionManager.should_skip_stage(session_id, stage):
-        logger.info(f"[{stage.upper()}] Skipped — checkpoint already exists.")
+        logger.info(f"[{stage.upper()}] Skipped — checkpoint exists.")
         output = SessionManager.load_checkpoint(session_id, stage)
-        # Still emit done so the frontend shows it as complete
-        emit({"type": "agent_done", "agent": stage, "elapsed_ms": 0, "output": _extract_snippet(stage, output)})
+        emit({"type": "agent_done", "agent": stage, "elapsed_ms": 0,
+              "output": _extract_snippet(stage, output)})
         return output
 
     logger.info(f"[{stage.upper()}] Starting...")
@@ -159,7 +233,7 @@ def safe_execute(stage: str, session_id: str, function, *args, emit: Callable[[d
             session_id=session_id,
             stage=stage,
             output_json=checkpoint_json,
-            raw_text=raw_text
+            raw_text=raw_text,
         )
 
         elapsed = int((time.time() - t0) * 1000)
@@ -181,28 +255,24 @@ def safe_execute(stage: str, session_id: str, function, *args, emit: Callable[[d
 
 
 # -------------------------------------------------------------
-# MAIN ORCHESTRATOR — now accepts emit callback
+# MAIN ORCHESTRATOR
 # -------------------------------------------------------------
 def orchestrate_advocai_workflow(
-    client: genai.Client,
+    client: OllamaClient,
     denial_path: str,
     policy_path: str,
     case_id: str,
-    emit: Callable[[dict], None] = lambda e: None,   # ← NEW
+    emit: Callable[[dict], None] = lambda e: None,
 ):
+    logger.info("=== AdvocAI Workflow Initiated (Local Ollama) ===")
 
-    logger.info("=== AdvocAI Phase II Workflow Initiated ===")
-
-    logger.info("Initializing session...")
     session_id = SessionManager.start_new_session(metadata={"case_id": case_id})
     logger.info(f"Session ID: {session_id}")
 
     case_output_dir = os.path.join("data", "output", case_id)
     os.makedirs(case_output_dir, exist_ok=True)
 
-    # ---------------------------------------------------------
     # STEP 1 — Auditor
-    # ---------------------------------------------------------
     structured_denial: StructuredDenial = safe_execute(
         "auditor", session_id,
         run_auditor_agent,
@@ -213,9 +283,7 @@ def orchestrate_advocai_workflow(
     )
     save_json_to_file(structured_denial, os.path.join(case_output_dir, "auditor_output.json"))
 
-    # ---------------------------------------------------------
     # STEP 2 — Clinician
-    # ---------------------------------------------------------
     clinical_evidence: EvidenceList = safe_execute(
         "clinician", session_id,
         run_clinician_agent,
@@ -225,21 +293,16 @@ def orchestrate_advocai_workflow(
     )
     save_json_to_file(clinical_evidence, os.path.join(case_output_dir, "clinician_output.json"))
 
-    # ---------------------------------------------------------
-    # STEP 3 — Regulatory
-    # ---------------------------------------------------------
+    # STEP 3 — Regulatory (in orchestrate_advocai_workflow)
     regulatory_result = safe_execute(
         "regulatory", session_id,
         run_regulatory_agent,
-        structured_denial_output=structured_denial,
-        session_dir=case_output_dir,
+        denial_data=structured_denial.model_dump() if isinstance(structured_denial, BaseModel) else structured_denial,
+        client=client,      # ← add this line
         emit=emit,
     )
-    save_json_to_file(regulatory_result, os.path.join(case_output_dir, "regulatory_output.json"))
 
-    # ---------------------------------------------------------
     # STEP 4 — Barrister
-    # ---------------------------------------------------------
     final_appeal_text = safe_execute(
         "barrister", session_id,
         run_barrister_agent,
@@ -252,20 +315,24 @@ def orchestrate_advocai_workflow(
     save_json_to_file(final_appeal_text, os.path.join(case_output_dir, "barrister_output.txt"))
 
     denial_code_safe = structured_denial.denial_code.replace(" ", "_")
-    save_json_to_file(final_appeal_text, os.path.join("data", "output", f"appeal_{case_id}_{denial_code_safe}.txt"))
+    save_json_to_file(
+        final_appeal_text,
+        os.path.join("data", "output", f"appeal_{case_id}_{denial_code_safe}.txt")
+    )
 
-    # ---------------------------------------------------------
     # STEP 5 — Judge
-    # ---------------------------------------------------------
     scorecard = safe_execute(
         "judge", session_id,
         run_judge_agent,
         session_dir=case_output_dir,
         emit=emit,
     )
-    save_json_to_file(scorecard.model_dump(), os.path.join(case_output_dir, "judge_scorecard.json"))
+    save_json_to_file(
+        scorecard.model_dump(),
+        os.path.join(case_output_dir, "judge_scorecard.json")
+    )
 
-    logger.info("=== AdvocAI Phase II Workflow Complete ===")
+    logger.info("=== AdvocAI Workflow Complete ===")
 
     return {
         "auditor": structured_denial.model_dump() if isinstance(structured_denial, BaseModel) else structured_denial,
@@ -277,12 +344,12 @@ def orchestrate_advocai_workflow(
 
 
 # -------------------------------------------------------------
-# CLI Entrypoint — unchanged
+# CLI Entrypoint
 # -------------------------------------------------------------
 if __name__ == "__main__":
-    client = initialize_gemini_client()
+    client = initialize_ollama_client()
     if not client:
-        logger.critical("Gemini client init failed. Exiting.")
+        logger.critical("Ollama client init failed. Is ollama running?")
         sys.exit(1)
 
     case_id = sys.argv[1] if len(sys.argv) > 1 else "case_1"

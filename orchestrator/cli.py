@@ -7,7 +7,7 @@ from rich import print
 from rich.console import Console
 from rich.table import Table
 
-from orchestrator.main import orchestrate_advocai_workflow, initialize_gemini_client
+from orchestrator.main import orchestrate_advocai_workflow, initialize_ollama_client
 from storage.session_manager import SessionManager
 
 console = Console()
@@ -44,7 +44,7 @@ def action_start(case_id: str):
     console.print(f"[green]Session created:[/green] {session_id}")
     console.print("Running workflow...")
 
-    client = initialize_gemini_client()
+    client = initialize_ollama_client()
     orchestrate_advocai_workflow(client, denial_path, policy_path, case_id)
 
     console.print("\n[bold green]Workflow completed successfully![/bold green]")
@@ -72,7 +72,7 @@ def action_resume(session_id: str):
         print_error("Input files missing for resume session.")
         sys.exit(1)
 
-    client = initialize_gemini_client()
+    client = initialize_ollama_client()
     orchestrate_advocai_workflow(client, denial_path, policy_path, case_id)
 
     console.print("[bold green]Resume complete.[/bold green]")
@@ -113,7 +113,7 @@ def action_run_local(case_id: str):
         print_error("Missing input files.")
         sys.exit(1)
 
-    client = initialize_gemini_client()
+    client = initialize_ollama_client()
     orchestrate_advocai_workflow(client, denial_path, policy_path, case_id)
 
     console.print("[bold green]Local run complete.[/bold green]")
@@ -130,19 +130,15 @@ def main():
 
     sub = parser.add_subparsers(dest="command", required=True)
 
-    # start
     p_start = sub.add_parser("start", help="Start a new workflow")
     p_start.add_argument("--case_id", required=True, help="Case ID, e.g., case_1")
 
-    # resume
     p_resume = sub.add_parser("resume", help="Resume an interrupted workflow")
     p_resume.add_argument("--session_id", required=True)
 
-    # status
     p_status = sub.add_parser("status", help="Check workflow status")
     p_status.add_argument("--session_id", required=True)
 
-    # run-local
     p_local = sub.add_parser("run-local", help="Run workflow without session manager")
     p_local.add_argument("--case_id", required=True)
 
@@ -150,13 +146,10 @@ def main():
 
     if args.command == "start":
         action_start(args.case_id)
-
     elif args.command == "resume":
         action_resume(args.session_id)
-
     elif args.command == "status":
         action_status(args.session_id)
-
     elif args.command == "run-local":
         action_run_local(args.case_id)
 

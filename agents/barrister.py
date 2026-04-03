@@ -1,7 +1,5 @@
-# agents/barrister.py — Enterprise-Stable Final Version
+# agents/barrister.py — Barrister Agent (Local Ollama)
 
-from google import genai
-from google.genai import types
 from typing import Optional, Dict, Any, List
 import logging
 import json
@@ -13,26 +11,7 @@ from .clinician import EvidenceList
 logger = logging.getLogger("BarristerAgent")
 logger.setLevel(logging.INFO)
 
-BARRISTER_MODEL = "gemini-2.5-flash"
 DEBUG_OUTPUT_DIR = "data/output"
-
-
-# ============================================================
-# Unified Gemini Text Extractor
-# ============================================================
-def extract_text_from_gemini(resp) -> Optional[str]:
-    """
-    Extracts text from all possible Gemini response shapes.
-    """
-    if hasattr(resp, "text") and resp.text:
-        return resp.text.strip()
-
-    try:
-        parts = resp.candidates[0].content.parts
-        texts = [p.text for p in parts if getattr(p, "text", None)]
-        return "\n".join(texts).strip() or None
-    except Exception:
-        return None
 
 
 # ============================================================
@@ -82,11 +61,19 @@ def format_clinical_evidence(ev: Any) -> str:
 
         lines = []
         for it in items:
-            title = getattr(it, "article_title", None) or it.get("article_title", "Untitled Article")
-            summary = getattr(it, "summary_of_finding", None) or it.get("summary_of_finding", "No summary provided.")
-            pmid = getattr(it, "pubmed_id", None) or it.get("pubmed_id", "N/A")
-
-            lines.append(f"- **{title}:** {summary} (PubMed: {pmid})")
+            title = (
+                getattr(it, "article_title", None)
+                or it.get("article_title", "Untitled Article")
+            )
+            summary = (
+                getattr(it, "summary_of_finding", None)
+                or it.get("summary_of_finding", "No summary provided.")
+            )
+            pmid = (
+                getattr(it, "pubmed_id", None)
+                or it.get("pubmed_id", "N/A")
+            )
+            lines.append(f"- {title}: {summary} (PubMed: {pmid})")
 
         return "\n".join(lines)
 
@@ -96,130 +83,111 @@ def format_clinical_evidence(ev: Any) -> str:
 
 
 # ============================================================
-# FINAL — Barrister Agent (orchestrator-compatible)
+# BARRISTER AGENT
 # ============================================================
 def run_barrister_agent(
-    client: genai.Client,
+    client,
     denial_details: StructuredDenial = None,
     clinical_evidence: EvidenceList = None,
     regulatory_evidence: Dict[str, Any] = None,
     **kwargs
 ) -> Optional[str]:
-    """
-    FINAL orchestrator-compatible signature.
-    Accepts keyword arguments:
-    - denial_details
-    - clinical_evidence
-    - regulatory_evidence
-    - **kwargs for future compatibility
-    """
 
-    # Rename for internal clarity
     denial = denial_details
     clinical = clinical_evidence
     regulatory = regulatory_evidence
 
     logger.info("[Barrister] Preparing appeal generation...")
 
-    # -------------------------------------------------
-    # Supporting Texts
-    # -------------------------------------------------
+    # ── Format supporting evidence ────────────────────────────────────────
     clinical_text = format_clinical_evidence(clinical)
     legal_points = extract_legal_points(regulatory)
 
     if legal_points:
         legal_text = "\n".join(
-            f"- **{lp.get('statute', 'Statute')}** — {lp.get('summary', lp.get('argument', 'No summary'))}"
+            f"- {lp.get('statute', 'Statute')}: "
+            f"{lp.get('summary', lp.get('argument', 'No summary'))}"
             for lp in legal_points
         )
     else:
         legal_text = "- No statutory or regulatory arguments produced."
 
-    # -------------------------------------------------
-    # System Instruction
-    # -------------------------------------------------
+    # ── System instruction ────────────────────────────────────────────────
     system_instruction = (
-        "You are the Barrister Agent — a senior appellate attorney specializing in "
-        "health insurance disputes. Your job is to produce a polished, persuasive, "
-        "fully structured APPEAL LETTER.\n\n"
-        "No placeholders. No incomplete sections. Use strong legal and medical reasoning."
+        "You are the Barrister Agent — a senior appellate attorney specializing "
+        "in health insurance disputes.\n"
+        "Your job is to produce a polished, persuasive, fully structured appeal letter.\n"
+        "Write in formal legal prose. No placeholders. No incomplete sections.\n"
+        "Use the clinical and regulatory evidence provided.\n"
+        "Do not add any commentary before or after the letter.\n"
+        "Output the letter text only."
     )
 
-    # -------------------------------------------------
-    # Prompt Assembly
-    # -------------------------------------------------
-    prompt = f"""
-Draft a complete, formal appeal letter.
+    # ── Prompt ───────────────────────────────────────────────────────────
+    # Note: removed markdown ** bold markers — Mistral sometimes echoes
+    # them literally into the output which looks bad in the PDF.
+    prompt = f"""Draft a complete formal insurance appeal letter using the information below.
 
-==============================================================
-1. INSURER DENIAL DETAILS
-==============================================================
+DENIAL DETAILS
+--------------
 Procedure: {denial.procedure_denied}
 Denial Code: {denial.denial_code}
-Insurer’s Reason: "{denial.insurer_reason_snippet}"
-Policy Clause: "{denial.policy_clause_text}"
+Insurer Reason: {denial.insurer_reason_snippet}
+Policy Clause: {denial.policy_clause_text}
 
-==============================================================
-2. CLINICAL EVIDENCE (SECTION I)
-==============================================================
+CLINICAL EVIDENCE
+-----------------
 {clinical_text}
 
-==============================================================
-3. REGULATORY FINDINGS (SECTION II)
-==============================================================
+REGULATORY FINDINGS
+-------------------
 {legal_text}
 
-==============================================================
-REQUIRED LETTER STRUCTURE
-==============================================================
-- Subject line referencing Procedure + Denial Code.
-- Opening paragraph summarizing the denial and intent to appeal.
-- Section I: Clinical argument using provided medical evidence.
-- Section II: Legal/policy argument referencing statutory principles.
-- Conclusion: Firm request for reversal + next steps.
-"""
+REQUIRED STRUCTURE
+------------------
+1. Subject line referencing the procedure and denial code.
+2. Opening paragraph: summarize the denial and state intent to appeal.
+3. Section I - Clinical Argument: use the clinical evidence above.
+4. Section II - Legal Argument: reference the regulatory findings above.
+5. Conclusion: firm request for reversal and clear next steps.
 
-    # -------------------------------------------------
-    # Model Invocation
-    # -------------------------------------------------
-    try:
-        resp = client.models.generate_content(
-            model=BARRISTER_MODEL,
-            contents=[prompt],
-            config=types.GenerateContentConfig(
-                system_instruction=system_instruction,
-                max_output_tokens=2048,
-                temperature=0.35,
-            ),
-        )
-    except Exception as e:
-        logger.exception("Barrister model API error: %s", e)
+Write the full letter now:"""
+
+    logger.info("[Barrister] Sending prompt to Ollama...")
+
+    # ── Generate ──────────────────────────────────────────────────────────
+    # Higher token limit — appeal letters are long-form prose
+    # temperature 0.3 = slight creativity for natural prose, still grounded
+    appeal_text = client.generate(
+        prompt=prompt,
+        system=system_instruction,
+        temperature=0.3,
+        max_tokens=2048,
+        json_mode=False,    # plain text output, not JSON
+    )
+
+    if not appeal_text or len(appeal_text.strip()) < 100:
+        logger.error("[Barrister] Empty or too-short response from Ollama.")
+        _save_debug(appeal_text or "", "barrister_raw.txt")
         return None
 
-    # -------------------------------------------------
-    # Extract Model Output
-    # -------------------------------------------------
-    appeal_text = extract_text_from_gemini(resp)
+    appeal_text = appeal_text.strip()
 
-    if not appeal_text:
-        logger.error("[Barrister] Empty response from model.")
-
-        try:
-            os.makedirs(DEBUG_OUTPUT_DIR, exist_ok=True)
-            with open(f"{DEBUG_OUTPUT_DIR}/barrister_raw.txt", "w", encoding="utf-8") as fh:
-                fh.write(repr(resp))
-        except Exception:
-            pass
-
-        return None
-
-    # Save raw
-    try:
-        os.makedirs(DEBUG_OUTPUT_DIR, exist_ok=True)
-        with open(f"{DEBUG_OUTPUT_DIR}/barrister_raw.txt", "w", encoding="utf-8") as fh:
-            fh.write(appeal_text)
-    except:
-        pass
+    # ── Save debug copy ───────────────────────────────────────────────────
+    _save_debug(appeal_text, "barrister_raw.txt")
 
     logger.info(f"[Barrister] Appeal letter generated ({len(appeal_text)} chars).")
     return appeal_text
+
+
+# ============================================================
+# Debug helper
+# ============================================================
+def _save_debug(content: str, filename: str):
+    """Save raw output for inspection without crashing the pipeline."""
+    try:
+        os.makedirs(DEBUG_OUTPUT_DIR, exist_ok=True)
+        with open(os.path.join(DEBUG_OUTPUT_DIR, filename), "w", encoding="utf-8") as fh:
+            fh.write(content)
+    except Exception as e:
+        logger.warning(f"[Barrister] Could not save debug file: {e}")
