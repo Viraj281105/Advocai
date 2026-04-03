@@ -23,12 +23,17 @@ CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);
 -- -------------------------------------------------------------------------
 DO $$
 BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_name = 'cases' AND column_name = 'user_id'
+    IF EXISTS (
+        SELECT 1 FROM information_schema.tables 
+        WHERE table_name = 'cases'
     ) THEN
-        ALTER TABLE cases ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
-        CREATE INDEX idx_cases_user_id ON cases (user_id);
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'cases' AND column_name = 'user_id'
+        ) THEN
+            ALTER TABLE cases ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
+            CREATE INDEX idx_cases_user_id ON cases (user_id);
+        END IF;
     END IF;
 END;
 $$;

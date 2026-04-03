@@ -98,5 +98,24 @@ BEFORE UPDATE ON sessions
 FOR EACH ROW EXECUTE FUNCTION update_timestamp();
 
 -- ============================================================
+-- 6. statutes — Knowledge base for legal retrieval
+-- ============================================================
+
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE IF NOT EXISTS statutes (
+    id SERIAL PRIMARY KEY,
+    statute_name TEXT,
+    statute_text TEXT,
+    embedding vector(768),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_statutes_embedding
+    ON statutes
+    USING ivfflat (embedding vector_cosine_ops)
+    WITH (lists = 100);
+
+-- ============================================================
 -- End of Schema
 -- ============================================================
