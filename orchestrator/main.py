@@ -63,13 +63,17 @@ class OllamaClient:
         json_mode: bool = False,
     ) -> str:
         """
-        Call Ollama generate endpoint.
+        Call Ollama /api/chat endpoint.
         Returns raw text string.
         """
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+
         payload = {
             "model": self.model,
-            "prompt": prompt,
-            "system": system,
+            "messages": messages,
             "stream": False,
             "options": {
                 "temperature": temperature,
@@ -82,12 +86,12 @@ class OllamaClient:
 
         try:
             r = requests.post(
-                f"{self.base_url}/api/generate",
+                f"{self.base_url}/api/chat",
                 json=payload,
                 timeout=120,
             )
             r.raise_for_status()
-            return r.json().get("response", "").strip()
+            return r.json().get("message", {}).get("content", "").strip()
         except Exception as e:
             logger.error(f"Ollama generate failed: {e}")
             return ""
@@ -293,14 +297,15 @@ def orchestrate_advocai_workflow(
     )
     save_json_to_file(clinical_evidence, os.path.join(case_output_dir, "clinician_output.json"))
 
-    # STEP 3 — Regulatory (in orchestrate_advocai_workflow)
+    # STEP 3 — Regulatory
     regulatory_result = safe_execute(
         "regulatory", session_id,
         run_regulatory_agent,
         denial_data=structured_denial.model_dump() if isinstance(structured_denial, BaseModel) else structured_denial,
-        client=client,      # ← add this line
+        client=client,
         emit=emit,
     )
+    save_json_to_file(regulatory_result, os.path.join(case_output_dir, "regulatory_output.json"))
 
     # STEP 4 — Barrister
     final_appeal_text = safe_execute(

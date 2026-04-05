@@ -26,15 +26,14 @@ def _get_conn():
 
 # ─── Schema ───────────────────────────────────────────────────────────────────
 
+# Matches the actual DB schema — no name column, uses hashed_password
 CREATE_USERS_TABLE = """
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
 CREATE TABLE IF NOT EXISTS users (
-    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name          TEXT        NOT NULL,
-    email         TEXT        NOT NULL UNIQUE,
-    password_hash TEXT        NOT NULL,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    id              SERIAL PRIMARY KEY,
+    email           TEXT NOT NULL UNIQUE,
+    hashed_password TEXT NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS users_email_idx ON users (email);
@@ -55,20 +54,24 @@ def ensure_users_table() -> None:
 
 @dataclass
 class UserRecord:
-    id: uuid.UUID
-    name: str
+    id: int
     email: str
-    password_hash: str
+    hashed_password: str
+    created_at: object = None
+    updated_at: object = None
 
 
-# ─── Queries (SYNC — FIXED) ───────────────────────────────────────────────────
+# ─── Queries ──────────────────────────────────────────────────────────────────
 
 def get_user_by_email(email: str) -> Optional[UserRecord]:
     conn = _get_conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
-                "SELECT id, name, email, password_hash FROM users WHERE email = %s LIMIT 1",
+                """
+                SELECT id, email, hashed_password, created_at, updated_at
+                FROM users WHERE email = %s LIMIT 1
+                """,
                 (email,),
             )
             row = cur.fetchone()
@@ -81,17 +84,17 @@ def get_user_by_email(email: str) -> Optional[UserRecord]:
     return UserRecord(**row)
 
 
-def create_user(name: str, email: str, password_hash: str) -> UserRecord:
+def create_user(email: str, hashed_password: str) -> UserRecord:
     conn = _get_conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 """
-                INSERT INTO users (name, email, password_hash)
-                VALUES (%s, %s, %s)
-                RETURNING id, name, email, password_hash
+                INSERT INTO users (email, hashed_password)
+                VALUES (%s, %s)
+                RETURNING id, email, hashed_password, created_at, updated_at
                 """,
-                (name, email, password_hash),
+                (email, hashed_password),
             )
             row = cur.fetchone()
         conn.commit()

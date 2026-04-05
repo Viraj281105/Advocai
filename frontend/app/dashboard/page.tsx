@@ -375,7 +375,7 @@ export default function DashboardPage() {
               </h1>
             </Link>
             <p style={{ margin:0, fontSize:"0.875rem", color:"rgba(250,248,242,0.4)" }}>
-              {user ? `Welcome back, ${user.name.split(" ")[0]}` : "Your cases"}
+              {user ? `Welcome back, ${user.email.split("@")[0]}` : "Your cases"}
             </p>
           </div>
 

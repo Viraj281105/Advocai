@@ -24,7 +24,7 @@ export default function RegisterPage() {
     }
     setLoading(true);
     try {
-      const { token, user } = await apiRegister(form.name, form.email, form.password);
+      const { token, user } = await apiRegister(form.email, form.password);
       saveAuth(token, user);
       router.push("/dashboard"); // → Issue #10 case dashboard
     } catch (err: unknown) {

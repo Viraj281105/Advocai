@@ -1,5 +1,28 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap');
 @import "tailwindcss";
+
+@source "../app/**/*.{js,ts,jsx,tsx}";
+@source "../components/**/*.{js,ts,jsx,tsx}";
+
+@theme {
+  --font-display: 'DM Serif Display', Georgia, serif;
+  --font-body: 'DM Sans', sans-serif;
+
+  --color-purple-950: #0f0a1e;
+  --color-purple-900: #1a1040;
+  --color-purple-800: #2d1b69;
+  --color-purple-700: #3d2494;
+  --color-purple-600: #4f31b8;
+  --color-purple-500: #6347d4;
+  --color-purple-400: #8b6fe8;
+  --color-purple-300: #b39ef4;
+  --color-purple-200: #d4c7fa;
+  --color-purple-100: #ede8fd;
+  --color-purple-50:  #f7f4ff;
+
+  --color-gold: #c9a84c;
+  --color-gold-light: #e8c97a;
+  --color-cream: #faf8f2;
+}
 
 :root {
   --purple-950: #0f0a1e;

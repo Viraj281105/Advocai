@@ -1,12 +1,12 @@
 """
 orchestrator/auth/router.py
-JWT authentication endpoints for AdvocAI (#9)
+JWT authentication endpoints for AdvocAI
 
 Endpoints:
   POST /api/auth/register
   POST /api/auth/login
   GET  /api/auth/me        (protected — requires Bearer token)
-  POST /api/auth/logout    (client-side token drop, but useful for audit log later)
+  POST /api/auth/logout
 """
 
 from datetime import datetime, timedelta, timezone
@@ -29,7 +29,6 @@ bearer_scheme = HTTPBearer()
 # ─── Pydantic schemas ──────────────────────────────────────────────────────────
 
 class RegisterRequest(BaseModel):
-    name: str
     email: EmailStr
     password: str
 
@@ -57,7 +56,7 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 def create_access_token(user_id: str, email: str) -> str:
     payload = {
-        "sub": user_id,
+        "sub": str(user_id),
         "email": email,
         "iat": datetime.now(timezone.utc),
         "exp": datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
@@ -80,7 +79,7 @@ async def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer_scheme)],
 ) -> UserRecord:
     payload = decode_token(credentials.credentials)
-    user = await get_user_by_email(payload["email"])
+    user = get_user_by_email(payload["email"])
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
     return user
@@ -97,29 +96,28 @@ async def register(body: RegisterRequest):
     if len(body.password) < 8:
         raise HTTPException(status_code=422, detail="Password must be at least 8 characters")
 
-    user = await create_user(
-        name=body.name,
+    user = create_user(
         email=body.email,
-        password_hash=hash_password(body.password),
+        hashed_password=hash_password(body.password),
     )
 
     token = create_access_token(str(user.id), user.email)
     return TokenResponse(
         access_token=token,
-        user={"id": str(user.id), "name": user.name, "email": user.email},
+        user={"id": str(user.id), "email": user.email},
     )
 
 
 @router.post("/login", response_model=TokenResponse)
 async def login(body: LoginRequest):
     user = get_user_by_email(body.email)
-    if not user or not verify_password(body.password, user.password_hash):
+    if not user or not verify_password(body.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     token = create_access_token(str(user.id), user.email)
     return TokenResponse(
         access_token=token,
-        user={"id": str(user.id), "name": user.name, "email": user.email},
+        user={"id": str(user.id), "email": user.email},
     )
 
 
@@ -127,13 +125,10 @@ async def login(body: LoginRequest):
 async def me(current_user: Annotated[UserRecord, Depends(get_current_user)]):
     return {
         "id": str(current_user.id),
-        "name": current_user.name,
         "email": current_user.email,
     }
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 async def logout():
-    # Token is stateless — client drops it. This endpoint exists for future
-    # token-blocklist / audit-log integration.
     return
