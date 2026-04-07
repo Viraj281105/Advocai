@@ -104,7 +104,7 @@ Generates medically grounded justification for treatment necessity using a PubMe
 
 ### ⚖️ 3. Regulatory Agent — Law & Statute Reasoner
 
-Identifies relevant coverage mandates (ACA, ERISA, state statutes) via legal rule matching and policy-language conflict detection. Uses a hybrid fallback chain: **Gemini → Gemini Retry → Ollama → Stub**.
+Identifies relevant coverage mandates (ACA, ERISA, state statutes) via legal rule matching and policy-language conflict detection. Runs fully locally via **Mistral on Ollama** with a stub fallback for edge cases.
 
 ```json
 {
@@ -140,15 +140,28 @@ Evaluates completeness, coherence, factuality, and legal defensibility. Checks c
 
 ---
 
-## 🔥 Hybrid LLM Architecture
+## 🔥 LLM Architecture — Fully Local
+
+AdvocAI runs entirely on-device via [Ollama](https://ollama.com/), with no external API dependencies. All inference and embedding is GPU-accelerated on local hardware.
 
 | Role | Model |
 |------|-------|
-| **Primary** | Gemini 2.5 Flash — fast, cost-efficient, high-quality reasoning |
-| **Fallback** | Ollama Llama 3.2 — offline, stable fallback engine |
-| **Tool Use** | AFC (Auto Function Calling) for PubMed evidence retrieval |
+| **Inference** | Mistral (via Ollama) — primary reasoning and generation |
+| **Embeddings** | Mistral Sentence Transformers — local semantic search & retrieval |
+| **Orchestration** | Ollama client — unified local model serving |
+| **Tool Use** | PubMed API + local retrieval pipeline |
 
-This ensures **zero pipeline breaks**, even under API outages.
+**Development Hardware:**
+
+| Component | Spec |
+|-----------|------|
+| CPU | Intel Core Ultra 9 275 HX |
+| GPU | NVIDIA RTX 5070 (GPU-accelerated inference) |
+| RAM | 32 GB |
+| Storage | 1 TB SSD |
+| Machine | ASUS ROG Strix G16 G615LP |
+
+All models run locally — **zero cloud inference, zero API costs, full data privacy.**
 
 ---
 
@@ -156,7 +169,7 @@ This ensures **zero pipeline breaks**, even under API outages.
 
 **Location:** `orchestrator/main.py`
 
-The orchestrator handles pipeline control flow, retry and fallback logic, stage checkpointing, session tracking, resume-from-last-stage, and hybrid LLM routing.
+The orchestrator handles pipeline control flow, retry and fallback logic, stage checkpointing, session tracking, resume-from-last-stage, and local Ollama model routing.
 
 ```python
 if checkpoint exists:
