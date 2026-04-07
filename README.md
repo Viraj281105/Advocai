@@ -3,14 +3,13 @@
 ### *A Production-Ready Multi-Agent Framework for Medical, Regulatory & Legal Reasoning*
 
 [![Python](https://img.shields.io/badge/Python-77.1%25-blue)](https://www.python.org/)
-[![PowerShell](https://img.shields.io/badge/PowerShell-18.5%25-5391FE)](https://learn.microsoft.com/en-us/powershell/)
+[![Next.js](https://img.shields.io/badge/Next.js-Frontend-black)](https://nextjs.org/)
 [![PLpgSQL](https://img.shields.io/badge/PLpgSQL-2.7%25-336791)](https://www.postgresql.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/Viraj281105/Advocai/blob/main/LICENSE)
-[![Contributors](https://img.shields.io/badge/Contributors-3-green)](https://github.com/Viraj281105/Advocai/graphs/contributors)
+[![Contributors](https://img.shields.io/badge/Contributors-2-green)](https://github.com/Viraj281105/Advocai/graphs/contributors)
 ![GitHub stars](https://img.shields.io/github/stars/Viraj281105/Advocai?style=social)
 
-**Kaggle: 5-Day Agents Intensive — Capstone Project (Agents for Good)**
-**Authors:** Viraj Jadhao & Team (3 Contributors)
+**Authors:** Viraj Jadhao & Bhumi Sirvi  
 **Architecture:** Multi-Agent | Hybrid LLM | PubMed Tooling | OCR | Legal Rule Engine | Persistent Workflow
 
 ---
@@ -177,7 +176,12 @@ else:
 Advocai/
 │
 ├── advocai/                        # Core package
-│   ├── agents/                     # Agent implementations (auditor, clinician, regulatory, barrister, judge)
+│   ├── agents/                     # Agent implementations
+│   │   ├── auditor/
+│   │   ├── clinician/
+│   │   ├── regulatory/
+│   │   ├── barrister/
+│   │   └── judge/
 │   ├── config/                     # Package-level configuration
 │   ├── data/
 │   │   ├── input/
@@ -190,11 +194,20 @@ Advocai/
 │       ├── build_law_library.py
 │       └── io_utils.py
 │
-├── agents/                         # Top-level agent entry points
-├── orchestrator/
-│   ├── main.py                     # Pipeline orchestration engine
+├── frontend/                       # Next.js web frontend
+│   ├── src/
+│   └── public/
+│
+├── models/
+│   └── local-embedder/             # Local embedding model
+│       ├── 1_Pooling/
+│       └── 2_Normalize/
+│
+├── orchestrator/                   # Pipeline orchestration engine
+│   ├── main.py
 │   ├── cli.py                      # CLI interface
-│   └── app.py                      # FastAPI server
+│   ├── app.py                      # FastAPI server
+│   └── auth/
 │
 ├── storage/
 │   ├── json/                       # JSON checkpoint filesystem
@@ -202,14 +215,6 @@ Advocai/
 │       └── migrations/             # PLpgSQL database migrations
 │
 ├── sessions/                       # Per-session state persistence
-├── data/
-│   ├── input/                      # Denial & policy PDF inputs
-│   ├── output/                     # Generated appeal packages
-│   └── truth/                      # Ground truth for evaluation
-│
-├── docs/
-│   ├── Architecture Diagram 2.png
-│   └── ThumbNail.png
 │
 ├── tools/                          # Shared tool utilities
 ├── config/                         # Top-level configuration
@@ -266,6 +271,14 @@ python orchestrator/cli.py \
     --case case_1
 ```
 
+### Frontend (Next.js)
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
 ---
 
 ## 📊 Performance Benchmarks
@@ -307,10 +320,12 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 ---
 
-## 👤 Author
+## 👥 Authors
 
-**Viraj Jadhao** — Real-time systems + AI engineering
+**Viraj Jadhao** — Real-time systems + AI engineering  
 📂 [github.com/Viraj281105](https://github.com/Viraj281105)
+
+**Bhumi Sirvi** — AI engineering + Backend systems  
 
 ---
 
