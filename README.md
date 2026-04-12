@@ -3,14 +3,13 @@
 ### *A Production-Ready Multi-Agent Framework for Medical, Regulatory & Legal Reasoning*
 
 [![Python](https://img.shields.io/badge/Python-77.1%25-blue)](https://www.python.org/)
-[![PowerShell](https://img.shields.io/badge/PowerShell-18.5%25-5391FE)](https://learn.microsoft.com/en-us/powershell/)
+[![Next.js](https://img.shields.io/badge/Next.js-Frontend-black)](https://nextjs.org/)
 [![PLpgSQL](https://img.shields.io/badge/PLpgSQL-2.7%25-336791)](https://www.postgresql.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/Viraj281105/Advocai/blob/main/LICENSE)
-[![Contributors](https://img.shields.io/badge/Contributors-3-green)](https://github.com/Viraj281105/Advocai/graphs/contributors)
+[![Contributors](https://img.shields.io/badge/Contributors-2-green)](https://github.com/Viraj281105/Advocai/graphs/contributors)
 ![GitHub stars](https://img.shields.io/github/stars/Viraj281105/Advocai?style=social)
 
-**Kaggle: 5-Day Agents Intensive — Capstone Project (Agents for Good)**
-**Authors:** Viraj Jadhao & Team (3 Contributors)
+**Authors:** Viraj Jadhao & Bhumi Sirvi  
 **Architecture:** Multi-Agent | Hybrid LLM | PubMed Tooling | OCR | Legal Rule Engine | Persistent Workflow
 
 ---
@@ -105,7 +104,7 @@ Generates medically grounded justification for treatment necessity using a PubMe
 
 ### ⚖️ 3. Regulatory Agent — Law & Statute Reasoner
 
-Identifies relevant coverage mandates (ACA, ERISA, state statutes) via legal rule matching and policy-language conflict detection. Uses a hybrid fallback chain: **Gemini → Gemini Retry → Ollama → Stub**.
+Identifies relevant coverage mandates (ACA, ERISA, state statutes) via legal rule matching and policy-language conflict detection. Runs fully locally via **Mistral on Ollama** with a stub fallback for edge cases.
 
 ```json
 {
@@ -141,15 +140,28 @@ Evaluates completeness, coherence, factuality, and legal defensibility. Checks c
 
 ---
 
-## 🔥 Hybrid LLM Architecture
+## 🔥 LLM Architecture — Fully Local
+
+AdvocAI runs entirely on-device via [Ollama](https://ollama.com/), with no external API dependencies. All inference and embedding is GPU-accelerated on local hardware.
 
 | Role | Model |
 |------|-------|
-| **Primary** | Gemini 2.5 Flash — fast, cost-efficient, high-quality reasoning |
-| **Fallback** | Ollama Llama 3.2 — offline, stable fallback engine |
-| **Tool Use** | AFC (Auto Function Calling) for PubMed evidence retrieval |
+| **Inference** | Mistral (via Ollama) — primary reasoning and generation |
+| **Embeddings** | Mistral Sentence Transformers — local semantic search & retrieval |
+| **Orchestration** | Ollama client — unified local model serving |
+| **Tool Use** | PubMed API + local retrieval pipeline |
 
-This ensures **zero pipeline breaks**, even under API outages.
+**Development Hardware:**
+
+| Component | Spec |
+|-----------|------|
+| CPU | Intel Core Ultra 9 275 HX |
+| GPU | NVIDIA RTX 5070 (GPU-accelerated inference) |
+| RAM | 32 GB |
+| Storage | 1 TB SSD |
+| Machine | ASUS ROG Strix G16 G615LP |
+
+All models run locally — **zero cloud inference, zero API costs, full data privacy.**
 
 ---
 
@@ -157,7 +169,7 @@ This ensures **zero pipeline breaks**, even under API outages.
 
 **Location:** `orchestrator/main.py`
 
-The orchestrator handles pipeline control flow, retry and fallback logic, stage checkpointing, session tracking, resume-from-last-stage, and hybrid LLM routing.
+The orchestrator handles pipeline control flow, retry and fallback logic, stage checkpointing, session tracking, resume-from-last-stage, and local Ollama model routing.
 
 ```python
 if checkpoint exists:
@@ -177,7 +189,12 @@ else:
 Advocai/
 │
 ├── advocai/                        # Core package
-│   ├── agents/                     # Agent implementations (auditor, clinician, regulatory, barrister, judge)
+│   ├── agents/                     # Agent implementations
+│   │   ├── auditor/
+│   │   ├── clinician/
+│   │   ├── regulatory/
+│   │   ├── barrister/
+│   │   └── judge/
 │   ├── config/                     # Package-level configuration
 │   ├── data/
 │   │   ├── input/
@@ -190,11 +207,20 @@ Advocai/
 │       ├── build_law_library.py
 │       └── io_utils.py
 │
-├── agents/                         # Top-level agent entry points
-├── orchestrator/
-│   ├── main.py                     # Pipeline orchestration engine
+├── frontend/                       # Next.js web frontend
+│   ├── src/
+│   └── public/
+│
+├── models/
+│   └── local-embedder/             # Local embedding model
+│       ├── 1_Pooling/
+│       └── 2_Normalize/
+│
+├── orchestrator/                   # Pipeline orchestration engine
+│   ├── main.py
 │   ├── cli.py                      # CLI interface
-│   └── app.py                      # FastAPI server
+│   ├── app.py                      # FastAPI server
+│   └── auth/
 │
 ├── storage/
 │   ├── json/                       # JSON checkpoint filesystem
@@ -202,14 +228,6 @@ Advocai/
 │       └── migrations/             # PLpgSQL database migrations
 │
 ├── sessions/                       # Per-session state persistence
-├── data/
-│   ├── input/                      # Denial & policy PDF inputs
-│   ├── output/                     # Generated appeal packages
-│   └── truth/                      # Ground truth for evaluation
-│
-├── docs/
-│   ├── Architecture Diagram 2.png
-│   └── ThumbNail.png
 │
 ├── tools/                          # Shared tool utilities
 ├── config/                         # Top-level configuration
@@ -266,6 +284,14 @@ python orchestrator/cli.py \
     --case case_1
 ```
 
+### Frontend (Next.js)
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
 ---
 
 ## 📊 Performance Benchmarks
@@ -307,10 +333,12 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 ---
 
-## 👤 Author
+## 👥 Authors
 
-**Viraj Jadhao** — Real-time systems + AI engineering
+**Viraj Jadhao** — Real-time systems + AI engineering  
 📂 [github.com/Viraj281105](https://github.com/Viraj281105)
+
+**Bhumi Sirvi** — AI engineering + Backend systems  
 
 ---
 
