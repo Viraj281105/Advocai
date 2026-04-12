@@ -87,7 +87,7 @@ export default function LetterPage() {
 
       {/* Header */}
       <header
-        className="relative z-10 flex items-center justify-between px-6 py-5"
+        className="relative z-10 flex items-center justify-between px-8 py-5"
         style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
       >
         <Link href="/" className="flex items-center gap-2">
@@ -117,11 +117,11 @@ export default function LetterPage() {
         </div>
       </header>
 
-      <main className="relative z-10 max-w-6xl mx-auto px-6 py-10">
+      <main className="relative z-10 max-w-6xl mx-auto px-8 py-10">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
 
           {/* Left — Letter */}
-          <div className="lg:col-span-2 flex flex-col gap-6">
+          <div className="lg:col-span-2 flex flex-col gap-6 min-w-0">
             <div>
               <p className="text-xs uppercase tracking-widest font-medium mb-2"
                 style={{ color: "var(--purple-400)" }}>Appeal letter</p>
@@ -130,21 +130,25 @@ export default function LetterPage() {
               </h1>
             </div>
 
-            <div className="rounded-2xl p-8"
-              style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
-              <pre
-                style={{
-                  fontFamily: "Georgia, 'Times New Roman', serif",
-                  fontSize: "14px",
-                  lineHeight: 1.9,
-                  color: "rgba(250,248,242,0.8)",
-                  whiteSpace: "pre-wrap",
-                  wordBreak: "break-word",
-                }}
-              >
-                {MOCK_LETTER}
-              </pre>
+          <div className="rounded-2xl p-8"
+            style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
+            <div
+              style={{
+                fontFamily: "Georgia, 'Times New Roman', serif",
+                fontSize: "14px",
+                lineHeight: 1.9,
+                color: "rgba(250,248,242,0.8)",
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+                overflowX: "hidden",
+                width: "100%",
+                minWidth: 0,
+                padding: "0 0.5rem",
+              }}
+            >
+              {MOCK_LETTER}
             </div>
+          </div>
 
             {/* Evidence explorer */}
             <div className="rounded-2xl overflow-hidden"

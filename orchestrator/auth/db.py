@@ -16,14 +16,12 @@ import psycopg2.extras
 
 def _get_conn():
     return psycopg2.connect(
-        host=os.getenv("POSTGRES_HOST", "localhost"),
+        host=os.getenv("POSTGRES_HOST", "127.0.0.1"),
         port=int(os.getenv("POSTGRES_PORT", 5432)),
         dbname=os.getenv("POSTGRES_DB", "advocai"),
         user=os.getenv("POSTGRES_USER", "postgres"),
         password=os.getenv("POSTGRES_PASSWORD", ""),
     )
-
-
 # ─── Schema ───────────────────────────────────────────────────────────────────
 
 # Matches the actual DB schema — no name column, uses hashed_password

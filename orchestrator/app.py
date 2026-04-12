@@ -13,6 +13,12 @@ from pathlib import Path
 env_path = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
+# TEMP DEBUG — remove after fixing
+import sys
+print(f"[DEBUG] .env path: {env_path}", file=sys.stderr)
+print(f"[DEBUG] .env exists: {env_path.exists()}", file=sys.stderr)
+print(f"[DEBUG] POSTGRES_PASSWORD = '{os.getenv('POSTGRES_PASSWORD')}'", file=sys.stderr)
+
 from pathlib import Path
 from typing import Annotated, AsyncGenerator
 

@@ -1,5 +1,13 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { DM_Sans, DM_Serif_Display } from "next/font/google";
+
+const dmSans = DM_Sans({ subsets: ["latin"], variable: "--font-body" });
+const dmSerif = DM_Serif_Display({ 
+  subsets: ["latin"], 
+  weight: "400", 
+  variable: "--font-display" 
+});
 
 export const metadata: Metadata = {
   title: "AdvocAI — AI-Powered Insurance Appeal System",
@@ -15,7 +23,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className={`${dmSans.variable} ${dmSerif.variable}`}>{children}</body>
     </html>
   );
 }
