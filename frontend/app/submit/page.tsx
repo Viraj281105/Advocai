@@ -44,6 +44,7 @@ export default function SubmitPage() {
     return true;
   };
 
+  
   const next = () => { if (validate()) setStep(s => Math.min(s + 1, 4)); };
   const back = () => { setErrors({}); setStep(s => Math.max(s - 1, 1)); };
 
