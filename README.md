@@ -269,6 +269,24 @@ POSTGRES_URL=optional
 
 ## ▶️ Running AdvocAI
 
+### Production Mode (All-in-one)
+
+```bash
+# Build the frontend first
+cd frontend
+npm run build
+cd ..
+
+# Start Ollama, Backend, and Frontend
+.\start_prod.bat
+```
+
+### Development Mode
+
+```bash
+.\start_dev.bat
+```
+
 ### API Mode
 
 ```bash
@@ -284,7 +302,7 @@ python orchestrator/cli.py \
     --case case_1
 ```
 
-### Frontend (Next.js)
+### Frontend (Next.js Development)
 
 ```bash
 cd frontend
@@ -318,12 +336,12 @@ npm run dev
 
 ## 🧭 Roadmap
 
-- [ ] Streamlit web dashboard
+- [x] Next.js web dashboard
 - [ ] ERISA/ACA statute embeddings
 - [ ] Advanced PubMed summarizer
 - [ ] Multi-jurisdiction legal packs
-- [ ] Auto PDF appeal packet compiler
-- [ ] Full multi-user system
+- [x] Auto PDF appeal packet compiler
+- [x] Full multi-user system
 
 ---
 

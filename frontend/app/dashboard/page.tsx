@@ -46,65 +46,6 @@ const STRENGTH_COLOR: Record<string, string> = {
   "Very Strong": "#4ade80",
 };
 
-// ─── Mock data (replace with real API once endpoint returns user-scoped cases) ─
-
-const MOCK_CASES: Case[] = [
-  {
-    id: "case_001",
-    patient_name: "Sarah Mitchell",
-    denial_reason: "Prior authorization not obtained for MRI lumbar spine",
-    status: "complete",
-    agents: { auditor:"done", clinician:"done", regulatory:"done", barrister:"done", judge:"done" },
-    judge_score: 84,
-    appeal_strength: "Strong",
-    created_at: new Date(Date.now() - 2 * 86400000).toISOString(),
-    has_pdf: true,
-  },
-  {
-    id: "case_002",
-    patient_name: "James Okafor",
-    denial_reason: "Experimental treatment — Keytruda off-label for Stage II NSCLC",
-    status: "complete",
-    agents: { auditor:"done", clinician:"done", regulatory:"done", barrister:"done", judge:"done" },
-    judge_score: 91,
-    appeal_strength: "Very Strong",
-    created_at: new Date(Date.now() - 5 * 86400000).toISOString(),
-    has_pdf: true,
-  },
-  {
-    id: "case_003",
-    patient_name: "Priya Nair",
-    denial_reason: "Out-of-network facility — emergency cardiac catheterisation",
-    status: "running",
-    agents: { auditor:"done", clinician:"done", regulatory:"running", barrister:"pending", judge:"pending" },
-    judge_score: null,
-    appeal_strength: null,
-    created_at: new Date(Date.now() - 1 * 3600000).toISOString(),
-    has_pdf: false,
-  },
-  {
-    id: "case_004",
-    patient_name: "Carlos Reyes",
-    denial_reason: "Medical necessity not established — sleep study (polysomnography)",
-    status: "complete",
-    agents: { auditor:"done", clinician:"done", regulatory:"done", barrister:"done", judge:"done" },
-    judge_score: 67,
-    appeal_strength: "Moderate",
-    created_at: new Date(Date.now() - 10 * 86400000).toISOString(),
-    has_pdf: true,
-  },
-  {
-    id: "case_005",
-    patient_name: "Amara Johnson",
-    denial_reason: "Benefit not covered — bariatric surgery BMI 38",
-    status: "error",
-    agents: { auditor:"done", clinician:"error", regulatory:"pending", barrister:"pending", judge:"pending" },
-    judge_score: null,
-    appeal_strength: null,
-    created_at: new Date(Date.now() - 3 * 86400000).toISOString(),
-    has_pdf: false,
-  },
-];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -342,11 +283,11 @@ export default function DashboardPage() {
         const data = await res.json();
         setCases(data.cases ?? []);
       } else {
-        // Fall back to mock data while backend endpoint isn't scoped yet
-        setCases(MOCK_CASES);
+        // Show empty list on error
+        setCases([]);
       }
     } catch {
-      setCases(MOCK_CASES);
+      setCases([]);
     } finally {
       setLoading(false);
     }

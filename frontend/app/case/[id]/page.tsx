@@ -38,14 +38,7 @@ function formatSnippet(agentId: string, output: Record<string, unknown>): string
   return JSON.stringify(output).slice(0, 80);
 }
 
-const MOCK_TIMINGS = [2200, 8000, 3500, 4000, 2000];
-const MOCK_SNIPPETS: Record<string, string> = {
-  auditor:    "Genomic Sequencing · Denial code: CO-50",
-  clinician:  "7 PubMed articles retrieved",
-  regulatory: "2 statutes identified · ACA §2713",
-  barrister:  "Dear Appeals Board, This letter constitutes a formal appeal...",
-  judge:      "Score: 0.91 · APPROVE",
-};
+
 
 // ── Animated SVG icons per agent ─────────────────────────────────────────
 function AgentIcon({ id, status, color }: { id: string; status: AgentStatus; color: string }) {
@@ -243,7 +236,6 @@ export default function CasePage() {
   const sessionId = params.id as string;
   const [agents, setAgents] = useState<AgentState[]>(makeAgents());
   const [done,   setDone]   = useState(false);
-  const [usingMock, setUsingMock] = useState(false);
 
   const completedCount = agents.filter(a => a.status === "done").length;
   const progress = Math.round((completedCount / agents.length) * 100);
@@ -253,7 +245,6 @@ export default function CasePage() {
 
   useEffect(() => {
     if (!sessionId) return;
-    if (sessionId.startsWith("demo_")) { runMock(); return; }
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
     const es = new EventSource(`${apiUrl}/api/case/${sessionId}/stream`);
@@ -271,26 +262,12 @@ export default function CasePage() {
       } catch { /**/ }
     };
 
-    es.onerror = () => { es.close(); if (!connected) { setUsingMock(true); runMock(); } };
+    es.onerror = () => { es.close(); };
     return () => es.close();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
-  function runMock() {
-    const ids = ["auditor","clinician","regulatory","barrister","judge"];
-    let i = 0;
-    const next = () => {
-      if (i >= ids.length) { setDone(true); return; }
-      const id = ids[i];
-      updateAgent(id, { status: "running" });
-      const t0 = Date.now();
-      setTimeout(() => {
-        updateAgent(id, { status: "done", elapsed: Date.now() - t0, outputSnippet: MOCK_SNIPPETS[id] });
-        i++; setTimeout(next, 300);
-      }, MOCK_TIMINGS[i]);
-    };
-    setTimeout(next, 600);
-  }
+
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--purple-950)", position: "relative" }}>
@@ -310,11 +287,7 @@ export default function CasePage() {
           </span>
         </Link>
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-          {usingMock && (
-            <span style={{ fontSize: "0.7rem", padding: "2px 8px", borderRadius: "9999px", background: "rgba(251,191,36,0.1)", color: "#fbbf24", border: "1px solid rgba(251,191,36,0.2)" }}>
-              Demo mode
-            </span>
-          )}
+
           <span style={{ fontSize: "0.7rem", fontFamily: "monospace", color: "rgba(250,248,242,0.2)" }}>{sessionId}</span>
         </div>
       </header>
