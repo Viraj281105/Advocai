@@ -344,7 +344,7 @@ def run_regulatory_agent(
     legal_points = [
         {
             "statute": s.get("statute_name", "Unknown"),
-            "summary": s.get("statute_text", "")[:400],
+            "summary": s.get("statute_text", "")[:1500],
             "jurisdiction": s.get("jurisdiction", "federal"),
             "category": s.get("category", "general"),
             "similarity_score": s.get("similarity", None),

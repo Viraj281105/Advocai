@@ -15,6 +15,8 @@ export default function LetterPage() {
   const [statutesOpen, setStatutesOpen] = useState(true);
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [editedText, setEditedText] = useState("");
+  const [isRescoring, setIsRescoring] = useState(false);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -23,6 +25,7 @@ export default function LetterPage() {
       .then(res => res.json())
       .then(data => {
         setResult(data);
+        setEditedText(data?.barrister || "Appeal letter is not available.");
         setLoading(false);
       })
       .catch(err => {
@@ -45,9 +48,28 @@ export default function LetterPage() {
   ];
 
   const copyLetter = () => {
-    navigator.clipboard.writeText(letterText);
+    navigator.clipboard.writeText(editedText);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleRescore = async () => {
+    setIsRescoring(true);
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const res = await fetch(`${apiUrl}/api/case/${sessionId}/rescore`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ edited_text: editedText })
+      });
+      const data = await res.json();
+      if (data.judge) {
+        setResult((prev: any) => ({ ...prev, judge: data.judge }));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    setIsRescoring(false);
   };
 
   const downloadUrl = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/case/${sessionId}/download`;
@@ -114,22 +136,28 @@ export default function LetterPage() {
 
           <div className="rounded-2xl p-8"
             style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
-            <div
+            <textarea
+              value={editedText}
+              onChange={(e) => setEditedText(e.target.value)}
               style={{
                 fontFamily: "Georgia, 'Times New Roman', serif",
                 fontSize: "14px",
                 lineHeight: 1.9,
                 color: "rgba(250,248,242,0.8)",
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-                overflowX: "hidden",
+                background: "transparent",
+                border: "none",
+                outline: "none",
+                resize: "vertical",
                 width: "100%",
-                minWidth: 0,
-                padding: "0 0.5rem",
+                minHeight: "60vh",
               }}
-            >
-              {letterText}
-            </div>
+            />
+          </div>
+          <div className="flex justify-end mt-4">
+             <button onClick={handleRescore} disabled={isRescoring} className="btn-primary flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium text-white cursor-pointer decoration-none" style={{ background: isRescoring ? "var(--purple-600)" : "" }}>
+                <Gavel size={13} />
+                {isRescoring ? "Re-evaluating..." : "Re-evaluate with Judge"}
+             </button>
           </div>
 
             {/* Evidence explorer */}

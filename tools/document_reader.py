@@ -10,6 +10,8 @@ from typing import List, Dict, Any
 import re
 import os
 import logging
+import base64
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +56,51 @@ def clean_text_segment(text: str) -> str:
     return text.strip()
 
 
+def extract_text_from_image(file_path: str) -> Dict[str, Any]:
+    try:
+        with open(file_path, "rb") as image_file:
+            encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+
+        payload = {
+            "model": "llava",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Extract all text from this document exactly as it appears. Do not add any commentary or explanation. Just return the raw text.",
+                    "images": [encoded_string]
+                }
+            ],
+            "stream": False,
+            "options": {
+                "temperature": 0.0
+            }
+        }
+        
+        base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        r = requests.post(f"{base_url}/api/chat", json=payload, timeout=120)
+        r.raise_for_status()
+        
+        text = r.json().get("message", {}).get("content", "").strip()
+        
+        return {
+            "source_file": file_path,
+            "metadata": {"type": "image"},
+            "full_text_content": text,
+            "segments": [text] if len(text) < 2000 else [text[i:i+2000] for i in range(0, len(text), 2000)],
+            "page_count": 1,
+            "success": True,
+        }
+    except Exception as e:
+        logger.error(f"[IMAGE ERROR] Failed to process image {file_path}: {e}")
+        return {
+            "error": f"Failed to process image: {e}",
+            "success": False,
+            "full_text_content": "",
+            "segments": [],
+            "page_count": 0,
+        }
+
+
 # ---------------------------------------------------------
 # MAIN EXTRACTION FUNCTION
 # ---------------------------------------------------------
@@ -67,6 +114,10 @@ def extract_text_from_document(file_path: str) -> Dict[str, Any]:
      - page_count
      - success/error
     """
+    
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext in [".jpg", ".jpeg", ".png"]:
+        return extract_text_from_image(file_path)
 
     if not os.path.exists(file_path):
         return {

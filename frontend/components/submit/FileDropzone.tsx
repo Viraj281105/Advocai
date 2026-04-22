@@ -20,7 +20,7 @@ export default function FileDropzone({ label, description, file, onFile }: Props
 
   const { getRootProps, getInputProps } = useDropzone({
     onDrop,
-    accept: { "application/pdf": [".pdf"] },
+    accept: { "application/pdf": [".pdf"], "image/jpeg": [".jpg", ".jpeg"], "image/png": [".png"] },
     maxSize: 10 * 1024 * 1024,
     multiple: false,
     onDragEnter: () => setDragOver(true),
@@ -46,7 +46,7 @@ export default function FileDropzone({ label, description, file, onFile }: Props
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ fontWeight: 500, fontSize: "0.9rem", color: "#faf8f2", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.name}</p>
-          <p style={{ fontSize: "0.75rem", marginTop: "3px", color: "rgba(250,248,242,0.4)" }}>{formatSize(file.size)} · PDF · Ready</p>
+          <p style={{ fontSize: "0.75rem", marginTop: "3px", color: "rgba(250,248,242,0.4)" }}>{formatSize(file.size)} · Document · Ready</p>
         </div>
         <button
           onClick={() => onFile(null)}
@@ -118,11 +118,11 @@ export default function FileDropzone({ label, description, file, onFile }: Props
         transition: "all 0.2s ease",
       }}>
         <FileText size={15} />
-        Browse PDF
+        Browse Files
       </div>
 
       <p style={{ fontSize: "0.75rem", marginTop: "1.5rem", color: "rgba(250,248,242,0.2)" }}>
-        PDF only · Max 10 MB
+        PDF, JPG, PNG · Max 10 MB
       </p>
     </div>
   );

@@ -241,10 +241,26 @@ function StatsBar({ cases }: { cases: Case[] }) {
     return Math.round(scored.reduce((a, c) => a + (c.judge_score ?? 0), 0) / scored.length);
   })();
 
+  const topDenialReason = (() => {
+    const reasons = cases.map(c => c.denial_reason).filter(Boolean);
+    if (!reasons.length) return "None";
+    const counts: Record<string, number> = {};
+    let maxCount = 0;
+    let topReason = "None";
+    for (const r of reasons) {
+      counts[r] = (counts[r] || 0) + 1;
+      if (counts[r] > maxCount) {
+        maxCount = counts[r];
+        topReason = r;
+      }
+    }
+    return topReason.length > 18 ? topReason.substring(0, 15) + "..." : topReason;
+  })();
+
   const stats = [
     { label:"Total Cases",    value: total,                 sub: "submitted" },
     { label:"Completed",      value: complete,              sub: `${total ? Math.round(complete/total*100) : 0}% success rate` },
-    { label:"In Progress",    value: running,               sub: "running now" },
+    { label:"Top Denial",     value: topDenialReason,       sub: "most common" },
     { label:"Avg. Score",     value: avgScore ?? "—",       sub: "judge rating" },
   ];
 

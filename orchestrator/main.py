@@ -61,6 +61,7 @@ class OllamaClient:
         temperature: float = 0.0,
         max_tokens: int = 2048,
         json_mode: bool = False,
+        stream_callback: Callable[[str], None] = None,
     ) -> str:
         """
         Call Ollama /api/chat endpoint.
@@ -84,14 +85,26 @@ class OllamaClient:
         if json_mode:
             payload["format"] = "json"
 
+        if stream_callback:
+            payload["stream"] = True
+
         try:
-            r = requests.post(
-                f"{self.base_url}/api/chat",
-                json=payload,
-                timeout=120,
-            )
-            r.raise_for_status()
-            return r.json().get("message", {}).get("content", "").strip()
+            if stream_callback:
+                r = requests.post(f"{self.base_url}/api/chat", json=payload, stream=True, timeout=120)
+                r.raise_for_status()
+                full_text = []
+                for line in r.iter_lines():
+                    if line:
+                        data = json.loads(line)
+                        chunk = data.get("message", {}).get("content", "")
+                        if chunk:
+                            stream_callback(chunk)
+                            full_text.append(chunk)
+                return "".join(full_text).strip()
+            else:
+                r = requests.post(f"{self.base_url}/api/chat", json=payload, timeout=120)
+                r.raise_for_status()
+                return r.json().get("message", {}).get("content", "").strip()
         except Exception as e:
             logger.error(f"Ollama generate failed: {e}")
             return ""
@@ -199,11 +212,12 @@ def safe_execute(
     function,
     *args,
     emit: Callable[[dict], None] = lambda e: None,
+    force: bool = False,
     **kwargs
 ):
     import time
 
-    if SessionManager.should_skip_stage(session_id, stage):
+    if not force and SessionManager.should_skip_stage(session_id, stage):
         logger.info(f"[{stage.upper()}] Skipped — checkpoint exists.")
         output = SessionManager.load_checkpoint(session_id, stage)
         emit({"type": "agent_done", "agent": stage, "elapsed_ms": 0,
@@ -297,44 +311,55 @@ def orchestrate_advocai_workflow(
     )
     save_json_to_file(clinical_evidence, os.path.join(case_output_dir, "clinician_output.json"))
 
-    # STEP 3 — Regulatory
-    regulatory_result = safe_execute(
-        "regulatory", session_id,
-        run_regulatory_agent,
-        denial_data=structured_denial.model_dump() if isinstance(structured_denial, BaseModel) else structured_denial,
-        client=client,
-        emit=emit,
-    )
-    save_json_to_file(regulatory_result, os.path.join(case_output_dir, "regulatory_output.json"))
+    # STEP 4 & 5 — Debate Loop
+    max_debates = 2
+    debates = 0
+    final_appeal_text = None
+    scorecard = None
+    critique = None
 
-    # STEP 4 — Barrister
-    final_appeal_text = safe_execute(
-        "barrister", session_id,
-        run_barrister_agent,
-        client=client,
-        denial_details=structured_denial,
-        clinical_evidence=clinical_evidence,
-        regulatory_evidence=regulatory_result,
-        emit=emit,
-    )
-    save_json_to_file(final_appeal_text, os.path.join(case_output_dir, "barrister_output.txt"))
+    while True:
+        final_appeal_text = safe_execute(
+            "barrister", session_id,
+            run_barrister_agent,
+            client=client,
+            denial_details=structured_denial,
+            clinical_evidence=clinical_evidence,
+            regulatory_evidence=regulatory_result,
+            critique=critique,
+            emit=emit,
+            force=(debates > 0),
+        )
+        save_json_to_file(final_appeal_text, os.path.join(case_output_dir, "barrister_output.txt"))
 
-    denial_code_safe = structured_denial.denial_code.replace(" ", "_")
-    save_json_to_file(
-        final_appeal_text,
-        os.path.join("data", "output", f"appeal_{case_id}_{denial_code_safe}.txt")
-    )
+        denial_code_safe = structured_denial.denial_code.replace(" ", "_")
+        save_json_to_file(
+            final_appeal_text,
+            os.path.join("data", "output", f"appeal_{case_id}_{denial_code_safe}.txt")
+        )
 
-    # STEP 5 — Judge
-    scorecard = safe_execute(
-        "judge", session_id,
-        run_judge_agent,
-        session_dir=case_output_dir,
-        emit=emit,
-    )
-    save_json_to_file(
-        scorecard.model_dump(),
-        os.path.join(case_output_dir, "judge_scorecard.json")
+        scorecard = safe_execute(
+            "judge", session_id,
+            run_judge_agent,
+            session_dir=case_output_dir,
+            emit=emit,
+            force=(debates > 0),
+        )
+        
+        scorecard_dump = scorecard.model_dump() if hasattr(scorecard, "model_dump") else scorecard
+        save_json_to_file(
+            scorecard_dump,
+            os.path.join(case_output_dir, "judge_scorecard.json")
+        )
+
+        overall_score = scorecard_dump.get("overall_score", 0) if isinstance(scorecard_dump, dict) else 0
+        if overall_score >= 80 or debates >= max_debates:
+            break
+
+        critique = scorecard_dump.get("recommendation", "Improve the letter.")
+        logger.info(f"=== DEBATE TRIGGERED === Score: {overall_score}. Critique: {critique}")
+        emit({"type": "agent_pending", "agent": "judge"})
+        debates += 1
     )
 
     logger.info("=== AdvocAI Workflow Complete ===")

@@ -90,6 +90,8 @@ def run_barrister_agent(
     denial_details: StructuredDenial = None,
     clinical_evidence: EvidenceList = None,
     regulatory_evidence: Dict[str, Any] = None,
+    critique: str = None,
+    emit: Any = None,
     **kwargs
 ) -> Optional[str]:
 
@@ -123,6 +125,9 @@ def run_barrister_agent(
         "Output the letter text only."
     )
 
+    if critique:
+        system_instruction += f"\n\nIMPORTANT DEBATE FEEDBACK: The Judge agent rejected your previous draft. The Judge provided this critique: '{critique}'. You MUST revise your letter to address these issues."
+
     # ── Prompt ───────────────────────────────────────────────────────────
     # Note: removed markdown ** bold markers — Mistral sometimes echoes
     # them literally into the output which looks bad in the PDF.
@@ -155,15 +160,17 @@ Write the full letter now:"""
 
     logger.info("[Barrister] Sending prompt to Ollama...")
 
-    # ── Generate ──────────────────────────────────────────────────────────
-    # Higher token limit — appeal letters are long-form prose
-    # temperature 0.3 = slight creativity for natural prose, still grounded
+    def stream_callback(chunk: str):
+        if emit:
+            emit({"type": "agent_stream", "agent": "barrister", "chunk": chunk})
+
     appeal_text = client.generate(
         prompt=prompt,
         system=system_instruction,
         temperature=0.3,
         max_tokens=2048,
         json_mode=False,    # plain text output, not JSON
+        stream_callback=stream_callback,
     )
 
     if not appeal_text or len(appeal_text.strip()) < 100:

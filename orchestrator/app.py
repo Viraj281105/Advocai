@@ -71,12 +71,19 @@ async def submit_case(
 ):
     session_id = f"case_{uuid.uuid4().hex[:12]}"
 
-    # Save uploaded PDFs to a temp session folder
     session_dir = Path(f"sessions/{session_id}")
     session_dir.mkdir(parents=True, exist_ok=True)
 
-    denial_path = session_dir / "denial.pdf"
-    policy_path = session_dir / "policy.pdf"
+    denial_ext = Path(denial_pdf.filename).suffix.lower()
+    if denial_ext not in [".pdf", ".jpg", ".jpeg", ".png"]:
+        denial_ext = ".pdf"
+        
+    policy_ext = Path(policy_pdf.filename).suffix.lower()
+    if policy_ext not in [".pdf", ".jpg", ".jpeg", ".png"]:
+        policy_ext = ".pdf"
+
+    denial_path = session_dir / f"denial{denial_ext}"
+    policy_path = session_dir / f"policy{policy_ext}"
 
     denial_path.write_bytes(await denial_pdf.read())
     policy_path.write_bytes(await policy_pdf.read())
@@ -235,6 +242,48 @@ async def get_result(session_id: str):
     if session["status"] != "done":
         raise HTTPException(status_code=202, detail="Pipeline still running")
     return session["result"]
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  POST /api/case/{session_id}/rescore  —  HitL Rescoring
+# ══════════════════════════════════════════════════════════════════════════
+class RescoreRequest(BaseModel):
+    edited_text: str
+
+@app.post("/api/case/{session_id}/rescore")
+async def rescore_case(session_id: str, req: RescoreRequest):
+    if session_id not in SESSIONS:
+        raise HTTPException(status_code=404, detail="Session not found")
+    session = SESSIONS[session_id]
+    
+    from storage.session_manager import SessionManager
+    from orchestrator.main import save_json_to_file, initialize_ollama_client
+    from agents.judge import run_judge_agent
+
+    # 1. Save edited text
+    SessionManager.save_checkpoint(session_id, "barrister", {}, req.edited_text)
+    case_output_dir = os.path.join("data", "output", session_id)
+    os.makedirs(case_output_dir, exist_ok=True)
+    save_json_to_file(req.edited_text, os.path.join(case_output_dir, "barrister_output.txt"))
+    
+    # 2. Re-run judge
+    try:
+        scorecard = await asyncio.to_thread(
+            run_judge_agent,
+            session_dir=case_output_dir,
+            client=initialize_ollama_client()
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+        
+    scorecard_dump = scorecard.model_dump() if hasattr(scorecard, "model_dump") else scorecard
+    save_json_to_file(scorecard_dump, os.path.join(case_output_dir, "judge_scorecard.json"))
+    
+    if "result" in session and "barrister" in session["result"]:
+        session["result"]["barrister"] = req.edited_text
+        session["result"]["judge"] = scorecard_dump
+        
+    return {"judge": scorecard_dump}
 
 
 # ══════════════════════════════════════════════════════════════════════════

@@ -255,7 +255,13 @@ export default function CasePage() {
     es.onmessage = (e) => {
       try {
         const event = JSON.parse(e.data);
-        if (event.type === "agent_start") updateAgent(event.agent, { status: "running" });
+        if (event.type === "agent_start") updateAgent(event.agent, { status: "running", outputSnippet: "" });
+        if (event.type === "agent_pending") updateAgent(event.agent, { status: "pending", outputSnippet: "" });
+        if (event.type === "agent_stream") {
+            setAgents(prev => prev.map(a => 
+                a.id === event.agent ? { ...a, outputSnippet: (a.outputSnippet || "") + event.chunk } : a
+            ));
+        }
         if (event.type === "agent_done")  updateAgent(event.agent, { status: "done", elapsed: event.elapsed_ms, outputSnippet: formatSnippet(event.agent, event.output || {}) });
         if (event.type === "agent_error") updateAgent(event.agent, { status: "error" });
         if (event.type === "pipeline_done" || event.type === "close") { setDone(true); es.close(); }
